@@ -78,13 +78,18 @@ standard lowering for one vessel is a translator guarded by `:vessel/id`.
 ## Executors
 
 - `hive-vessel.executor.emacsclient`: `(target {:socket-name "..."})`
+- `hive-vessel.editor-wire.executor`: `(target server-or-hub)` over the
+  editor wire below. Vim finds hive through the discovery file, authenticates,
+  reconnects when hive restarts, and any number of Vims may attach; natives
+  go to the active session and their replies come back through the session's
+  own correlation table, interleaved with `HiveOp` calls on the same socket.
+  The bundled plugin connects on its own, so nothing is typed in Vim.
 - `hive-vessel.executor.vim-channel`: `(start!)`, then in Vim
-  `:HiveVesselConnect 127.0.0.1:<port>` (plugin in `resources/hive-vessel/vim`),
-  `(await-vim! server ms)`, `(target server)`
-  One attached Vim. For several Vim sessions, a hello handshake, reconnection
-  to a restarted hive, correlated concurrent calls and inbound events, use
-  `hive-vim.vessel/vessel-target` instead: a drop-in target for this same
-  dialect.
+  `:HiveVesselConnect 127.0.0.1:<port>`, `(await-vim! server ms)`,
+  `(target server)`. One attached Vim on a port the user types, no discovery
+  and no hello: the manual fallback, served by the same plugin.
+  `hive-vim.vessel/vessel-target` is a third target for this dialect, over
+  hive-vim's own transport.
 - `hive-vessel.executor.sse`: the shared transport for `:json` vessels (a
   DeepSeek Harness page, a VS Code extension host, a web harness).
   `(start! {:port p :token t})`, then `(executor bridge)` as `:vessel/execute!`.
@@ -120,8 +125,9 @@ needs no framing code and VS Code adopts the same format at no cost.
 | `editor-wire.schema`                        | malli value objects (cljc)                                                  |
 | `editor-wire.pending`, `editor-wire.session`| pure session machine: handshake, correlation, expiry, effects as data (cljc)|
 | `editor-wire.transport`                     | `ITransport` and `ICaller` ports, recording fake (cljc)                     |
-| `editor-wire.hub`                           | every session of one editor kind; `ICaller` over the active one             |
+| `editor-wire.hub`                           | every session of one editor kind; `ICaller` over the active one, `native!` |
 | `editor-wire.server`                        | loopback TCP boundary plus discovery file                                   |
+| `editor-wire.executor`                      | `:vessel/execute!` and `target` sending `:vim-channel` natives via the hub  |
 | `editor-wire.port`, `.terminal`, `.vessel`  | `RemoteEditorPort` (hive-spi), `RemoteTerminal` (hive-addon), `IVessel`     |
 
 ```clojure
@@ -130,8 +136,17 @@ needs no framing code and VS Code adopts the same format at no cost.
 
 (def srv (server/start! {:editor "vim"}))          ; writes the discovery file
 (def editor (port/remote-editor-port (:hub srv)))  ; IEditorPort over the active Vim
+(def vim (executor/target srv))                    ; hive-vessel target, same session
+(v/dispatch! (v/standard-registry) vim {:op :ui/notify :message "hi"})
 (server/stop! srv)                                 ; closes sessions, removes the file
 ```
+
+The session machine carries two kinds of outbound call under one id space:
+`[:call op params]` is a `HiveOp` call answered with a Result, and
+`[:native payload]` is a raw Vim channel command answered with whatever Vim
+returns (`ex`, `normal` and `redraw` never reply and resolve at once). Both
+expire under the same pending table, so a silent editor times out the same
+way for either.
 
 The three adapter namespaces (`port`, `terminal`, `vessel`) need
 `io.github.hive-agi/hive-spi` and `io.github.hive-agi/hive-addon` on the
@@ -139,9 +154,23 @@ consumer's classpath. This library does not declare them (provided scope), so
 its runtime dependencies stay Clojure and malli; every other `editor-wire`
 namespace loads without them.
 
-A reference Vim 9 client lives in `resources/hive-vessel/editor-wire/vim`:
-`:HiveWireConnect` (autoconnects through discovery, retries), `:HiveWireStatus`,
-and a `g:HiveOp` implementing every op of the vocabulary.
+### The Vim plugin
+
+One plugin, `resources/hive-vessel/vim`, serves both directions (Vim 9,
+`+channel`):
+
+- `plugin/hive_vessel.vim`: `:HiveVesselConnect` (discovery, token, hello;
+  automatic at startup, retries while hive is down), `:HiveVesselConnect
+  host:port` (manual fallback: a raw channel, for the `vim-channel` executor),
+  `:HiveVesselDisconnect`, `:HiveVesselStatus`, `:HiveVesselShowTerminal`,
+  and `g:HiveOp`.
+- `autoload/hive_vessel.vim`: what the `:vim-channel` dialect calls to paint
+  panels, notify, open files and drive terminals.
+- `autoload/hive_vessel/ops.vim`: every op of the wire vocabulary.
+- `autoload/hive_vessel/wire.vim`: discovery, handshake, reconnection, events.
+
+Options: `g:hive_vessel_autoconnect`, `g:hive_vessel_retry_ms`,
+`g:hive_vessel_discovery_dir`, `g:hive_vessel_headless`, `g:hive_vessel_faces`.
 
 ## Addons
 

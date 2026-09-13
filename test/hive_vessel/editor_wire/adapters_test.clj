@@ -12,7 +12,9 @@
             [hive-vessel.editor-wire.transport :as transport]
             [hive-vessel.editor-wire.vessel :as rv]
             [hive-spi.editor.ports :as ports]
-            [hive-spi.editor.registry :as registry]))
+            [hive-spi.editor.registry :as registry]
+            [hive-vessel.editor-wire.executor :as executor]
+            [hive-vessel.core :as v]))
 
 ;; SPDX-License-Identifier: MIT
 
@@ -68,6 +70,52 @@
     (is (= "a" (get (transport/call! h "editor-status" {}) "value")))
     (is (= [[:hello (fake/sid a) nil] [:hello (fake/sid b) nil] [:event (fake/sid a) "focus"]]
            @seen))))
+
+(def notify {:op :ui/notify :message "hi" :level :warn})
+
+(deftest the-hub-executes-vim-channel-natives-on-the-active-session
+  (let [h (new-hub)
+        f (fake/connect! h echo {:native (fn [[_ f args]] (str f ":" (count args)))})
+        r (v/dispatch! (v/standard-registry) (executor/target h)
+                       [notify {:op :vim/ex :command "let g:done = 1"}])]
+    (testing "a replying command comes back with Vim's raw value, a silent one with nil"
+      (is (= ["hive_vessel#notify:2" nil] (get-in r [:ok :plan/results])) (pr-str r)))
+    (testing "the wire carried the dialect's own payloads, the call with an id"
+      (is (= [[:native ["call" "hive_vessel#notify" ["hi" "warn"]]]
+              [:native ["ex" "let g:done = 1"]]]
+             (fake/calls f)))
+      (is (some #(and (= :server-native (codec/classify %)) (neg? (codec/frame-id %))) @(:sent f))))
+    (testing "HiveOp calls and natives share one correlation space"
+      (is (= (ops/ok {"op" "editor-status" "params" {}}) (transport/call! h "editor-status" {})))
+      (is (= "hive_vessel#panel_lines:1"
+             (get (hub/native! h ["call" "hive_vessel#panel_lines" ["live"]]) "value"))))))
+
+(deftest a-wire-failure-is-a-loud-dispatch-failure
+  (let [h (new-hub)]
+    (testing "no session"
+      (let [err (:error (v/dispatch! (v/standard-registry) (executor/target h) notify))]
+        (is (= :execute-threw (:failure/reason err)))
+        (is (re-find #"wire/not-connected" (get-in err [:failure/detail :message])))))
+    (testing "a silent Vim times out within the target's bound and reports the batch position"
+      (fake/connect! h echo {:native (fn [_] ::fake/silent)})
+      (let [t0 (System/currentTimeMillis)
+            err (:error (v/dispatch! (v/standard-registry) (executor/target h :timeout-ms 100)
+                                     [{:op :vim/ex :command "echo 1"} notify notify]))]
+        (is (= :execute-threw (:failure/reason err)))
+        (is (= 1 (get-in err [:failure/detail :completed])))
+        (is (re-find #"wire/timeout" (get-in err [:failure/detail :message])))
+        (is (< (- (System/currentTimeMillis) t0) 2000))))
+    (testing "another dialect is refused before touching the wire"
+      (is (thrown? clojure.lang.ExceptionInfo
+                   ((executor/executor h) {:op :vessel/native :native/dialect :elisp :native/payload "(x)"}))))))
+
+(deftest the-executor-accepts-a-server-map
+  (let [h (new-hub)]
+    (fake/connect! h echo {:native (fn [_] 7)})
+    (is (= 7 ((executor/executor {:hub h}) {:op :vessel/native :native/dialect :vim-channel
+                                            :native/payload ["call" "f" []]})))
+    (is (= #{:vessel/id :vessel/dialect :vessel/execute! :vessel/features}
+           (set (keys (executor/target {:hub h} :features #{:x/y})))))))
 
 (defn- method-fn [protocol method]
   (let [v (resolve (symbol (str (:ns (meta (:var protocol))))

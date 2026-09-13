@@ -100,19 +100,34 @@
             (swap! (:waiters hub) dissoc [sid call-id])
             (if (= ::pending v) (ops/err "wire/timeout") v))))))
 
+(defn- issue!
+  "Drive INPUT (a :call or :native) on the active session and await its
+   Result for at most WAIT-MS plus the reply grace."
+  [{:keys [lock waiters active now-fn] :as hub} input wait-ms]
+  (if-let [sid @active]
+    (let [p (promise)
+          [effects conn call-id] (locking lock
+                                   (let [[effects conn call-id]
+                                         (advance! hub sid input (now-fn))]
+                                     (when call-id (swap! waiters assoc [sid call-id] p))
+                                     [effects conn call-id]))]
+      (interpret! hub sid conn effects)
+      (await-result hub sid call-id p (+ wait-ms reply-grace-ms)))
+    (ops/err "wire/not-connected")))
+
 (defrecord Hub [lock sessions active waiters token id-fn now-fn listener]
   transport/ICaller
   (call! [this op params]
-    (if-let [sid @active]
-      (let [p (promise)
-            [effects conn call-id] (locking lock
-                                     (let [[effects conn call-id]
-                                           (advance! this sid [:call op params] (now-fn))]
-                                       (when call-id (swap! waiters assoc [sid call-id] p))
-                                       [effects conn call-id]))]
-        (interpret! this sid conn effects)
-        (await-result this sid call-id p (+ (ops/timeout-ms op params) reply-grace-ms)))
-      (ops/err "wire/not-connected"))))
+    (issue! this [:call op params] (ops/timeout-ms op params))))
+
+(defn native!
+  "Send native channel command PAYLOAD (a :vim-channel :vessel/native
+   payload) to the active session, waiting at most TIMEOUT-MS for a reply.
+   Returns a Result: ok with the editor's raw reply value (nil for a command
+   that never replies), or wire/not-connected, wire/timeout, wire/closed,
+   wire/invalid-frame."
+  ([hub payload] (native! hub payload ops/default-timeout-ms))
+  ([hub payload timeout-ms] (issue! hub [:native payload timeout-ms] timeout-ms)))
 
 (defn hub
   "A hub authenticating sessions by :token. Optional :listener

@@ -53,6 +53,17 @@
 (def event-names
   #{"focus" "selection_changed" "at_mentioned" "terminal_exit"})
 
+(def native-op
+  "Pending-table op name of a native channel command sent through a session
+   on behalf of hive-vessel (a :vim-channel :vessel/native payload). Not a
+   wire op: it never appears in a HiveOp call."
+  "vessel/native")
+
+(def replying-native-commands
+  "Vim channel commands that answer when given an id; ex, normal and redraw
+   never reply."
+  #{"call" "expr"})
+
 (def default-timeout-ms 5000)
 
 (defn timeout-ms

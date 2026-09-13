@@ -1,20 +1,22 @@
 vim9script
-# hive editor wire v1 client: discovery, handshake, reconnect, HiveOp dispatch.
+# hive-vessel Vim client: discovery, handshake, reconnect and HiveOp dispatch
+# over the one JSON channel that also carries hive's :vim-channel natives.
 # SPDX-License-Identifier: MIT
 
-import autoload 'hive_wire/ops.vim'
+import autoload 'hive_vessel/ops.vim'
 
 const WIRE = 1
 const EDITOR = 'vim'
 
 var channel: channel = null_channel
 var session: string = ''
+var address: string = ''
 var retry_timer: number = 0
 var last_error: string = ''
 
 export def DiscoveryPath(): string
   const base = empty($XDG_RUNTIME_DIR) ? '/tmp' : $XDG_RUNTIME_DIR
-  return get(g:, 'hive_wire_discovery_dir', base .. '/hive-editor-wire') .. '/' .. EDITOR .. '.json'
+  return get(g:, 'hive_vessel_discovery_dir', base .. '/hive-editor-wire') .. '/' .. EDITOR .. '.json'
 enddef
 
 export def ReadDiscovery(): dict<any>
@@ -29,31 +31,79 @@ export def ReadDiscovery(): dict<any>
   endtry
 enddef
 
+# True on a discovered session (hello done) or a manual raw channel.
 export def Connected(): bool
-  return channel != null_channel && ch_status(channel) == 'open' && session != ''
+  return channel != null_channel && ch_status(channel) == 'open'
+    && (session != '' || address != '')
 enddef
 
 def OnMessage(ch: channel, msg: any)
 enddef
 
+# The open channel is also published as g:hive_vessel_channel, the pre-vim9
+# contract other plugins read.
+def Publish(ch: channel)
+  channel = ch
+  if ch == null_channel
+    if exists('g:hive_vessel_channel')
+      unlet g:hive_vessel_channel
+    endif
+  else
+    g:hive_vessel_channel = ch
+  endif
+enddef
+
 def OnClose(ch: channel)
-  channel = null_channel
+  Publish(null_channel)
   session = ''
+  address = ''
   ScheduleRetry()
 enddef
 
 def ScheduleRetry()
-  if get(g:, 'hive_wire_autoconnect', 1) && retry_timer == 0
-    retry_timer = timer_start(get(g:, 'hive_wire_retry_ms', 3000), (_) => {
+  if get(g:, 'hive_vessel_autoconnect', 1) && retry_timer == 0
+    retry_timer = timer_start(get(g:, 'hive_vessel_retry_ms', 3000), (_) => {
       retry_timer = 0
       if !Connected()
-        Connect(true)
+        Connect('', true)
       endif
     })
   endif
 enddef
 
-export def Connect(quiet: bool = false): bool
+def Open(addr: string): channel
+  return ch_open(addr, {
+    mode: 'json', waittime: 500, drop: 'never',
+    callback: OnMessage, close_cb: OnClose})
+enddef
+
+# Manual fallback: a raw JSON channel to ADDR (host:port), no discovery, no
+# hello. This is what hive-vessel.executor.vim-channel serves.
+def ConnectRaw(addr: string, quiet: bool): bool
+  Disconnect()
+  const ch = Open(addr)
+  if ch_status(ch) != 'open'
+    last_error = 'connect failed on ' .. addr
+    return false
+  endif
+  Publish(ch)
+  address = addr
+  session = ''
+  last_error = ''
+  if !quiet
+    echomsg 'hive: connected to ' .. addr
+  endif
+  return true
+enddef
+
+# Connect through the discovery file, or to ADDR when given.
+export def Connect(addr: string = '', quiet: bool = false): bool
+  if addr != ''
+    return ConnectRaw(addr, quiet)
+  endif
+  if address != ''
+    Disconnect()
+  endif
   if Connected()
     return true
   endif
@@ -63,9 +113,7 @@ export def Connect(quiet: bool = false): bool
     ScheduleRetry()
     return false
   endif
-  const ch = ch_open('127.0.0.1:' .. doc.port, {
-    mode: 'json', waittime: 500, drop: 'never',
-    callback: OnMessage, close_cb: OnClose})
+  const ch = Open('127.0.0.1:' .. doc.port)
   if ch_status(ch) != 'open'
     last_error = 'connect failed on port ' .. doc.port
     ScheduleRetry()
@@ -81,8 +129,9 @@ export def Connect(quiet: bool = false): bool
     ScheduleRetry()
     return false
   endif
-  channel = ch
+  Publish(ch)
   session = reply.value.session
+  address = ''
   last_error = ''
   if !quiet
     echomsg 'hive: connected, session ' .. session
@@ -98,22 +147,25 @@ export def Disconnect()
   if channel != null_channel && ch_status(channel) == 'open'
     ch_close(channel)
   endif
-  channel = null_channel
+  Publish(null_channel)
   session = ''
+  address = ''
 enddef
 
 export def Start()
-  if get(g:, 'hive_wire_autoconnect', 1)
-    Connect(true)
+  if get(g:, 'hive_vessel_autoconnect', 1)
+    Connect('', true)
   endif
 enddef
 
 export def Status(): dict<any>
-  return {connected: Connected(), session: session, discovery: DiscoveryPath(), error: last_error}
+  return {connected: Connected(), session: session, address: address,
+    discovery: DiscoveryPath(), error: last_error}
 enddef
 
+# Events only exist on a discovered session; a raw channel has no peer for them.
 export def SendEvent(name: string, data: dict<any>)
-  if Connected()
+  if Connected() && session != ''
     ch_sendexpr(channel, {type: 'event', event: name, data: data}, {callback: (_, _) => 0})
   endif
 enddef
@@ -130,3 +182,5 @@ export def Op(op: string, params: any): dict<any>
     return {ok: false, error: {code: 'op/failed', message: v:exception}}
   endtry
 enddef
+
+ops.OnEvent(SendEvent)

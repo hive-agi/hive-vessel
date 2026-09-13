@@ -6,8 +6,15 @@
 
 ;; SPDX-License-Identifier: MIT
 
-(defn- registry-value [registry]
-  (if (instance? #?(:clj clojure.lang.IDeref :cljs IDeref) registry) @registry registry))
+(defn- registry-value
+  "REGISTRY itself, or its value when it is something dereferenceable (an
+   atom holding a live registry). In ClojureScript IDeref is a protocol, so
+   the test is satisfies?, not instance?."
+  [registry]
+  (if #?(:clj (instance? clojure.lang.IDeref registry)
+         :cljs (satisfies? IDeref registry))
+    @registry
+    registry))
 
 (defn dispatch!
   "Compile OP-OR-OPS for TARGET and execute every native op in order.

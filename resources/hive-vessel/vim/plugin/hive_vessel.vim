@@ -1,23 +1,48 @@
-" hive-vessel -- connect Vim to a hive :vim-channel executor.
-"
-"   :HiveVesselConnect localhost:7922
-"
-" The channel is opened in JSON mode, so the server drives Vim with channel
-" commands (:help channel-commands) that call into autoload/hive_vessel.vim.
-"
-" SPDX-License-Identifier: MIT
+vim9script
+# hive-vessel: one Vim plugin for both directions of the hive editor wire.
+#
+# Outbound, hive drives Vim: :vim-channel natives ["call", "hive_vessel#...",
+# args] paint panels through autoload/hive_vessel.vim. Inbound, Vim answers
+# hive's HiveOp calls (autoload/hive_vessel/ops.vim). Both travel the one JSON
+# channel that autoload/hive_vessel/wire.vim discovers and authenticates.
+#
+#   :HiveVesselConnect              discovery file + token (the default; automatic)
+#   :HiveVesselConnect 127.0.0.1:N  manual fallback: a raw channel to
+#                                   hive-vessel.executor.vim-channel, no hello
+#   :HiveVesselDisconnect  :HiveVesselStatus  :HiveVesselShowTerminal {id}
+#
+# Options: g:hive_vessel_autoconnect (1), g:hive_vessel_retry_ms (3000),
+# g:hive_vessel_discovery_dir, g:hive_vessel_headless, g:hive_vessel_faces.
+#
+# SPDX-License-Identifier: MIT
 
-if exists('g:loaded_hive_vessel')
+if exists('g:loaded_hive_vessel') || v:version < 900 || !has('channel')
   finish
 endif
-let g:loaded_hive_vessel = 1
+g:loaded_hive_vessel = 1
 
-function! HiveVesselConnect(address) abort
-  if exists('g:hive_vessel_channel') && ch_status(g:hive_vessel_channel) ==# 'open'
-    call ch_close(g:hive_vessel_channel)
-  endif
-  let g:hive_vessel_channel = ch_open(a:address, {'mode': 'json', 'waittime': 2000})
-  return ch_status(g:hive_vessel_channel)
-endfunction
+import autoload 'hive_vessel/wire.vim'
 
-command! -nargs=1 HiveVesselConnect echo HiveVesselConnect(<q-args>)
+def g:HiveOp(op: string, params: any): dict<any>
+  return wire.Op(op, params)
+enddef
+
+# The pre-vim9 contract, kept for plugins built against it: a function taking
+# the address and returning the channel status, with the open channel in
+# g:hive_vessel_channel. An empty address goes through discovery.
+def g:HiveVesselConnect(address: string = ''): string
+  wire.Connect(address, true)
+  return exists('g:hive_vessel_channel') ? ch_status(g:hive_vessel_channel) : 'fail'
+enddef
+
+command! -nargs=? HiveVesselConnect wire.Connect(<q-args>)
+command! HiveVesselDisconnect wire.Disconnect()
+command! HiveVesselStatus echo wire.Status()
+command! -nargs=1 HiveVesselShowTerminal wire.ShowTerminal(<q-args>)
+
+augroup hive_vessel
+  autocmd!
+  autocmd VimEnter * wire.Start()
+  autocmd FocusGained * wire.SendEvent('focus', {})
+  autocmd VimLeavePre * wire.Disconnect()
+augroup END

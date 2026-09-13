@@ -1,0 +1,7 @@
+;; The ClojureScript half of the cljc strata, run under node:
+;;   clojure -M:cljs -m shadow.cljs.devtools.cli compile test && node target/cljs/node-tests.js
+{:deps {:aliases [:cljs]}
+ :builds
+ {:test {:target :node-test
+         :output-to "target/cljs/node-tests.js"
+         :ns-regexp "^hive-vessel\\.(wire|dispatch|plan|rule|doc|editor-wire\\.(codec|session))-test$"}}}

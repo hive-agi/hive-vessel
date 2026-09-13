@@ -1,9 +1,16 @@
 vim9script
-# hive editor wire v1 op handlers for Vim. Op names are the hive-spi port verbs.
+# hive-vessel: hive editor wire v1 op handlers for Vim. Op names are the
+# hive-spi port verbs.
 # SPDX-License-Identifier: MIT
 
 var terms: dict<number> = {}
 var handlers: dict<func(dict<any>): dict<any>> = {}
+var EventSink: func = (_, _) => 0
+
+# Register the sink events (terminal_exit) go to; wire.vim installs SendEvent.
+export def OnEvent(F: func)
+  EventSink = F
+enddef
 
 export def Surfaces(): list<string>
   return has('terminal') ? ['editor', 'buffer', 'terminal'] : ['editor', 'buffer']
@@ -238,7 +245,7 @@ def TerminalSpawn(p: dict<any>): dict<any>
   endif
   var opts: dict<any> = {term_name: 'hive:' .. id, hidden: !get(p, 'show', v:false),
     term_finish: 'open', term_kill: 'kill',
-    exit_cb: (_, status) => hive#SendEvent('terminal_exit', {id: id, status: status})}
+    exit_cb: (_, status) => EventSink('terminal_exit', {id: id, status: status})}
   if type(get(p, 'cwd', v:null)) == v:t_string && isdirectory(p.cwd)
     opts.cwd = p.cwd
   endif

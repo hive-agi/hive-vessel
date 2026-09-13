@@ -57,14 +57,28 @@
 (def ServerCallFrame
   [:tuple [:= "call"] [:= "HiveOp"] [:tuple OpName Params] CallId])
 
+(def NativePayload
+  "A Vim channel command as hive-vessel's :vim-channel dialect emits it."
+  [:or
+   [:tuple [:= "call"] :string [:vector :any]]
+   [:tuple [:= "expr"] :string]
+   [:tuple [:enum "ex" "normal"] :string]
+   [:tuple [:= "redraw"]]
+   [:tuple [:= "redraw"] :string]])
+
+(def ServerNativeFrame
+  [:or
+   [:tuple [:= "call"] :string [:vector :any] CallId]
+   [:tuple [:= "expr"] :string CallId]])
+
 (def ServerReplyFrame [:tuple RequestId Result])
 
 (def FrameKind
-  [:enum :client-request :client-reply :server-call :server-reply :invalid])
+  [:enum :client-request :client-reply :server-call :server-reply :server-native :invalid])
 
 (def Pending
   [:map {:closed true}
-   [:op OpName]
+   [:op [:or OpName [:= ops/native-op]]]
    [:deadline :int]])
 
 (def SessionStatus [:enum :awaiting-hello :ready :closed])

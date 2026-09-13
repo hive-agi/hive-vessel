@@ -81,12 +81,28 @@
             [[:resolve (codec/frame-id frame) (codec/message frame)]])
       (emit state []))))
 
+(defn- native-reply?
+  "True when FRAME answers a pending native command of STATE: [id value] with
+   id registered under vessel/native. The value is the editor's raw reply,
+   not a Result, so it is checked before any frame classification."
+  [state frame]
+  (and (vector? frame) (= 2 (count frame))
+       (= ops/native-op (get-in state [:pending (first frame) :op]))))
+
+(defn- on-native-reply
+  [state frame]
+  (let [[id value] frame
+        [table _] (pending/settle (:pending state) id)]
+    (emit (assoc state :pending table) [[:resolve id (ops/ok value)]])))
+
 (defn- on-ready-frame
   [state frame]
-  (case (codec/classify frame)
-    :client-request (on-client-request state frame)
-    :client-reply (on-client-reply state frame)
-    (emit state [])))
+  (if (native-reply? state frame)
+    (on-native-reply state frame)
+    (case (codec/classify frame)
+      :client-request (on-client-request state frame)
+      :client-reply (on-client-reply state frame)
+      (emit state []))))
 
 (defn- on-frame
   [state frame]
@@ -116,6 +132,35 @@
                    [[:send (codec/call call-id op params)]])
              :call-id call-id))))
 
+(defn- on-native
+  "Send native channel command PAYLOAD on behalf of hive-vessel. A replying
+   command (call, expr) goes out with a fresh call id and waits TIMEOUT ms
+   under the pending table; ex, normal and redraw never reply, so they are
+   sent as-is and resolved at once with ok nil."
+  [state payload timeout now]
+  (let [call-id (- (:next-call state))]
+    (cond
+      (not= :ready (:status state))
+      (assoc (emit state [[:resolve call-id (ops/err "wire/not-connected")]])
+             :call-id call-id)
+
+      (not (codec/native? payload))
+      (assoc (emit (update state :next-call inc)
+                   [[:resolve call-id (ops/err "wire/invalid-frame" (pr-str payload))]])
+             :call-id call-id)
+
+      (codec/replying-native? payload)
+      (assoc (emit (-> state
+                       (update :next-call inc)
+                       (update :pending pending/add call-id ops/native-op (+ now timeout)))
+                   [[:send (codec/native-call call-id payload)]])
+             :call-id call-id)
+
+      :else
+      (assoc (emit (update state :next-call inc)
+                   [[:send payload] [:resolve call-id (ops/ok nil)]])
+             :call-id call-id))))
+
 (defn- on-tick
   [state now]
   (let [[table ids] (pending/expire (:pending state) now)]
@@ -128,6 +173,7 @@
   (case (first input)
     :frame (on-frame state (second input))
     :call (on-call state (nth input 1) (nth input 2 {}) now)
+    :native (on-native state (nth input 1) (nth input 2 ops/default-timeout-ms) now)
     :tick (on-tick state now)
     :closed (if (= :closed (:status state))
               (emit state [])

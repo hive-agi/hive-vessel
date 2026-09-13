@@ -71,6 +71,37 @@
     (is (= [[:resolve (:call-id r1) (ops/err "wire/timeout")]] (:effects r2)))
     (is (= [] (:effects r3)))))
 
+(deftest native-commands
+  (testing "a replying command goes out with a call id and its raw reply resolves as ok"
+    (let [r1 (ses/step (ready) [:native ["call" "hive_vessel#notify" ["hi" "info"]] 500] 10)
+          r2 (ses/step (:state r1) [:frame [(:call-id r1) 42]] 20)]
+      (is (= [[:send ["call" "hive_vessel#notify" ["hi" "info"] (:call-id r1)]]] (:effects r1)))
+      (is (= {(:call-id r1) {:op ops/native-op :deadline 510}} (get-in r1 [:state :pending])))
+      (is (= [[:resolve (:call-id r1) (ops/ok 42)]] (:effects r2)))
+      (is (empty? (get-in r2 [:state :pending])))))
+  (testing "a Result-shaped raw reply is still the editor's value, wrapped"
+    (let [r1 (ses/step (ready) [:native ["expr" "g:x"]] 0)
+          r2 (ses/step (:state r1) [:frame [(:call-id r1) {"ok" true "value" 1}]] 0)]
+      (is (= [[:resolve (:call-id r1) (ops/ok {"ok" true "value" 1})]] (:effects r2)))))
+  (testing "ex, normal and redraw never reply: sent as-is, resolved at once, nothing pending"
+    (doseq [payload [["ex" "let g:done = 1"] ["normal" "gg"] ["redraw"] ["redraw" "force"]]]
+      (let [r (ses/step (ready) [:native payload] 0)]
+        (is (= [[:send payload] [:resolve (:call-id r) (ops/ok nil)]] (:effects r)) (pr-str payload))
+        (is (empty? (get-in r [:state :pending])) (pr-str payload)))))
+  (testing "a native that is not a channel command never reaches the wire"
+    (let [r (ses/step (ready) [:native ["bogus"]] 0)]
+      (is (empty? (effects-of :send r)))
+      (is (= "wire/invalid-frame" (ops/error-code (nth (first (:effects r)) 2))))))
+  (testing "a native before hello resolves not-connected"
+    (let [r (ses/step (ses/init "S" token) [:native ["call" "f" []]] 0)]
+      (is (= [[:resolve -1 (ops/err "wire/not-connected")]] (:effects r)))))
+  (testing "a native times out under the pending table like a HiveOp call"
+    (let [r1 (ses/step (ready) [:native ["call" "f" []] 100] 0)
+          r2 (ses/step (:state r1) [:tick] 100)
+          r3 (ses/step (:state r2) [:frame [(:call-id r1) "late"]] 101)]
+      (is (= [[:resolve (:call-id r1) (ops/err "wire/timeout")]] (:effects r2)))
+      (is (= [] (:effects r3))))))
+
 (deftest pending-table
   (let [t (-> {} (pending/add -1 "a" 10) (pending/add -2 "b" 5) (pending/add -3 "c" 50))]
     (is (= [-2 -1] (pending/expired-ids t 10)))
@@ -82,6 +113,13 @@
   (gen/frequency
    [[5 (gen/let [op (gen/elements (sort ops/all-ops))]
          [:call op {}])]
+    [3 (gen/let [payload (gen/elements [["call" "hive_vessel#notify" ["hi" "info"]]
+                                        ["expr" "1+1"]
+                                        ["ex" "echo 1"]
+                                        ["redraw"]
+                                        ["bogus"]])
+                 timeout (gen/choose 1 8000)]
+         [:native payload timeout])]
     [4 (gen/let [pick gen/nat ok gen/boolean]
          [:reply pick ok])]
     [2 (gen/let [dt (gen/choose 0 8000)] [:tick dt])]
@@ -89,7 +127,9 @@
     [1 (gen/return [:junk])]]))
 
 (defn- run-script
-  "Drive a ready session through SCRIPT, then close it. Returns every step."
+  "Drive a ready session through SCRIPT, then close it. Returns every step.
+   A :reply answers a pending call by position: a HiveOp call with a Result,
+   a native with a raw value."
   [script]
   (loop [state (ready) now 0 calls [] steps [] [input & more] script]
     (if (nil? input)
@@ -97,10 +137,15 @@
       (let [[kind a b] input
             [now step] (case kind
                          :call [now (ses/step state [:call a b] now)]
+                         :native [now (ses/step state [:native a b] now)]
                          :reply [now (let [ids (vec (keys (:pending state)))]
                                        (if (seq ids)
-                                         (ses/step state [:frame [(nth ids (mod a (count ids)))
-                                                                  (if b (ops/ok 1) (ops/err "op/failed"))]] now)
+                                         (let [id (nth ids (mod a (count ids)))
+                                               native? (= ops/native-op (get-in state [:pending id :op]))]
+                                           (ses/step state [:frame [id (cond
+                                                                         native? (if b 1 {"ok" false})
+                                                                         b (ops/ok 1)
+                                                                         :else (ops/err "op/failed"))]] now))
                                          (ses/step state [:frame [(- -1000 a) (ops/ok 1)]] now)))]
                          :tick [(+ now a) (ses/step state [:tick] (+ now a))]
                          :event [now (ses/step state [:frame [9 (codec/event "focus")]] now)]

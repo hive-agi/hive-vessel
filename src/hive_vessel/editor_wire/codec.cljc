@@ -16,7 +16,9 @@
 (defn- message-shape? [x] (and (map? x) (string? (get x "type"))))
 
 (defn classify
-  "Frame kind: :client-request :client-reply :server-call :server-reply or :invalid."
+  "Frame kind: :client-request :client-reply :server-call :server-reply
+   :server-native or :invalid. A :server-native is a native channel command
+   (call or expr) carrying a negative id whose function is not HiveOp."
   [frame]
   (if-not (vector? frame)
     :invalid
@@ -26,6 +28,12 @@
              (vector? c) (= 2 (count c)) (string? (first c)) (map? (second c))
              (int-id? d) (neg? d))
         :server-call
+
+        (and (contains? ops/replying-native-commands a)
+             (int-id? (peek frame)) (neg? (peek frame))
+             (or (and (= "call" a) (= 4 (count frame)) (string? b) (vector? c))
+                 (and (= "expr" a) (= 3 (count frame)) (string? b))))
+        :server-native
 
         (not= 2 (count frame)) :invalid
         (not (int-id? a)) :invalid
@@ -39,6 +47,7 @@
   [frame]
   (case (classify frame)
     :server-call (nth frame 3)
+    :server-native (peek frame)
     :invalid nil
     (first frame)))
 
@@ -50,6 +59,35 @@
 (defn call-op [frame] (first (nth frame 2)))
 
 (defn call-params [frame] (second (nth frame 2)))
+
+(defn native?
+  "True when PAYLOAD is a Vim channel command: a vector headed by a command
+   name (call, expr, ex, normal, redraw), as hive-vessel's :vim-channel
+   dialect emits."
+  [payload]
+  (and (vector? payload) (string? (first payload))
+       (case (first payload)
+         "call" (and (= 3 (count payload)) (string? (second payload)) (vector? (nth payload 2)))
+         "expr" (and (= 2 (count payload)) (string? (second payload)))
+         ("ex" "normal") (and (= 2 (count payload)) (string? (second payload)))
+         "redraw" (<= 1 (count payload) 2)
+         false)))
+
+(defn replying-native?
+  "True when native PAYLOAD answers once given an id."
+  [payload]
+  (contains? ops/replying-native-commands (first payload)))
+
+(defn native-call
+  "Server -> client native frame: PAYLOAD with CALL-ID appended, so the
+   editor's reply [call-id value] correlates like any other call."
+  [call-id payload]
+  (conj (vec payload) call-id))
+
+(defn native-payload
+  "The payload of a :server-native frame, id stripped."
+  [frame]
+  (pop frame))
 
 (defn reply
   "Reply frame answering id with result."
