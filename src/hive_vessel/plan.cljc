@@ -6,7 +6,11 @@
    vessel's dialect lowers those to natives; the same fold handles every
    level. When a translator throws, returns junk, or produces something that
    cannot itself be lowered, the next candidate is tried, so a specific
-   translator degrades to the generic one instead of failing the op."
+   translator degrades to the generic one instead of failing the op.
+
+   This fall-through covers TRANSLATION only. Executing a compiled plan is
+   hive-vessel.dispatch/dispatch!, where the first executor throw stops the
+   batch and is reported loudly as :execute-threw."
   (:require [hive-vessel.rule :as rule]
             [hive-vessel.schema :as s]
             [malli.core :as m]))

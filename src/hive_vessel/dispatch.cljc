@@ -11,9 +11,17 @@
 
 (defn dispatch!
   "Compile OP-OR-OPS for TARGET and execute every native op in order.
-   Returns {:ok plan-with-:plan/results} or {:error failure}; an executor that
-   throws stops the run and reports how many ops completed. REGISTRY may be a
-   value or an atom holding one."
+   Returns {:ok plan-with-:plan/results} or {:error failure}. REGISTRY may be
+   a value or an atom holding one.
+
+   Failure semantics, which differ by phase:
+   - TRANSLATION failures fall through to the next candidate translator, so a
+     vessel-specific translator degrades to the generic one.
+   - EXECUTION failures do NOT. The first executor throw stops the batch and
+     returns {:error {:failure/reason :execute-threw ... :failure/detail
+     {:completed n}}}: no re-route to another vessel, no silent drop.
+   - A batch is not a transaction. Order ops so a partial run is safe and
+     treat :completed as the resume point."
   [registry target op-or-ops]
   (let [compiled (plan/plan (registry-value registry) target op-or-ops)]
     (if-let [p (:ok compiled)]
