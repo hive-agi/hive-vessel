@@ -4,6 +4,8 @@
             [hive-vessel.core :as v]
             [hive-vessel.doc :as d]))
 
+;; SPDX-License-Identifier: MIT
+
 (def sample-ops
   [{:op :ui/show-panel :panel/id "demo"
     :doc (d/doc "Demo \"q\"" (d/heading "H") (d/para "ok" :success)
