@@ -27,14 +27,6 @@ def g:HiveOp(op: string, params: any): dict<any>
   return wire.Op(op, params)
 enddef
 
-# The pre-vim9 contract, kept for plugins built against it: a function taking
-# the address and returning the channel status, with the open channel in
-# g:hive_vessel_channel. An empty address goes through discovery.
-def g:HiveVesselConnect(address: string = ''): string
-  wire.Connect(address, true)
-  return exists('g:hive_vessel_channel') ? ch_status(g:hive_vessel_channel) : 'fail'
-enddef
-
 command! -nargs=? HiveVesselConnect wire.Connect(<q-args>)
 command! HiveVesselDisconnect wire.Disconnect()
 command! HiveVesselStatus echo wire.Status()

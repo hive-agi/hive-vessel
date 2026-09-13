@@ -1,0 +1,73 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The JVM half of the cljc strata: unit, property and mutation tests.
+  # Editor round-trips (emacs --batch, headless Vim) live behind the
+  # :integration alias and are not run here.
+  clojure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: DeLaGuardo/setup-clojure@13.0
+        with:
+          cli: latest
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: m2-${{ runner.os }}-${{ hashFiles('deps.edn') }}
+          restore-keys: m2-${{ runner.os }}-
+
+      - name: Run Clojure tests
+        run: clojure -M:test
+
+  # The ClojureScript half, so the cljc claim stays measured: shadow-cljs
+  # compiles the :test build (shadow-cljs.edn) and node runs it. shadow-cljs
+  # comes from deps.edn's :cljs alias, so no npm install is needed; the cold
+  # compile is about half a minute, hence the .shadow-cljs cache.
+  clojurescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: DeLaGuardo/setup-clojure@13.0
+        with:
+          cli: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            .shadow-cljs
+          key: cljs-${{ runner.os }}-${{ hashFiles('deps.edn', 'shadow-cljs.edn') }}
+          restore-keys: cljs-${{ runner.os }}-
+
+      - name: Compile the node test build
+        run: clojure -M:cljs -m shadow.cljs.devtools.cli compile test
+
+      - name: Run the ClojureScript tests under node
+        run: node target/cljs/node-tests.js

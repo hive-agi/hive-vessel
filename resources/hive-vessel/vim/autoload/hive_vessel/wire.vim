@@ -40,21 +40,8 @@ enddef
 def OnMessage(ch: channel, msg: any)
 enddef
 
-# The open channel is also published as g:hive_vessel_channel, the pre-vim9
-# contract other plugins read.
-def Publish(ch: channel)
-  channel = ch
-  if ch == null_channel
-    if exists('g:hive_vessel_channel')
-      unlet g:hive_vessel_channel
-    endif
-  else
-    g:hive_vessel_channel = ch
-  endif
-enddef
-
 def OnClose(ch: channel)
-  Publish(null_channel)
+  channel = null_channel
   session = ''
   address = ''
   ScheduleRetry()
@@ -86,7 +73,7 @@ def ConnectRaw(addr: string, quiet: bool): bool
     last_error = 'connect failed on ' .. addr
     return false
   endif
-  Publish(ch)
+  channel = ch
   address = addr
   session = ''
   last_error = ''
@@ -129,7 +116,7 @@ export def Connect(addr: string = '', quiet: bool = false): bool
     ScheduleRetry()
     return false
   endif
-  Publish(ch)
+  channel = ch
   session = reply.value.session
   address = ''
   last_error = ''
@@ -147,7 +134,7 @@ export def Disconnect()
   if channel != null_channel && ch_status(channel) == 'open'
     ch_close(channel)
   endif
-  Publish(null_channel)
+  channel = null_channel
   session = ''
   address = ''
 enddef
