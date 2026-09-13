@@ -81,6 +81,10 @@ standard lowering for one vessel is a translator guarded by `:vessel/id`.
 - `hive-vessel.executor.vim-channel`: `(start!)`, then in Vim
   `:HiveVesselConnect 127.0.0.1:<port>` (plugin in `resources/hive-vessel/vim`),
   `(await-vim! server ms)`, `(target server)`
+  One attached Vim. For several Vim sessions, a hello handshake, reconnection
+  to a restarted hive, correlated concurrent calls and inbound events, use
+  `hive-vim.vessel/vessel-target` instead: a drop-in target for this same
+  dialect.
 - `hive-vessel.executor.sse`: the shared transport for `:json` vessels (a
   DeepSeek Harness page, a VS Code extension host, a web harness).
   `(start! {:port p :token t})`, then `(executor bridge)` as `:vessel/execute!`.
