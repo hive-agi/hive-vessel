@@ -1,0 +1,157 @@
+(ns hive-vessel.editor-integration-test
+  "Real round-trips: the generated Elisp is evaluated by `emacs --batch`, the
+   Vim channel payload is executed by headless Vim through the bundled
+   plugin. The subject IS the editor integration, hence ^:integration."
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
+            [clojure.test.check.generators :as gen]
+            [hive-vessel.core :as v]
+            [hive-vessel.dialect.elisp :as elisp]
+            [hive-vessel.doc :as d]
+            [hive-vessel.schema :as s]
+            [hive-vessel.wire :as wire]
+            [malli.generator :as mg])
+  (:import (java.io File)
+           (java.util.concurrent TimeUnit)))
+
+;; SPDX-License-Identifier: MIT
+
+(defn- sh [& args]
+  (let [p (-> (ProcessBuilder. ^java.util.List (vec args))
+              (.redirectErrorStream false)
+              (.start))
+        out (future (slurp (.getInputStream p)))
+        err (future (slurp (.getErrorStream p)))]
+    (when-not (.waitFor p 60 TimeUnit/SECONDS)
+      (.destroyForcibly p)
+      (throw (ex-info "editor timed out" {:args args})))
+    {:exit (.exitValue p) :out @out :err @err}))
+
+(defn- temp-file [suffix content]
+  (let [f (File/createTempFile "hive-vessel" suffix)]
+    (.deleteOnExit f)
+    (spit f content)
+    f))
+
+(def sample-doc
+  (d/doc "Carto \"Flow\" \\ #3"
+         (d/heading "apply write-form")
+         (d/para "succeeded" :success)
+         (d/fields [["paths" "src/a.clj\nsrc/b.clj"] ["verify" "ok"]])
+         (d/code "(defn f [] \"x\")" "clojure")
+         (d/diff "@@ -1,2 +1,2 @@\n-(old)\n+(new ü)\n context")
+         (d/link "open a" "/tmp/a.clj" 2)))
+
+(defn- generated-docs [n]
+  (gen/sample (mg/generator s/Doc) n))
+
+(defn- emacs-panel-text [doc]
+  (let [code (get-in (v/plan (v/standard-registry) (:emacs v/reference-targets)
+                             {:op :ui/show-panel :panel/id "t" :doc doc})
+                     [:ok :plan/ops 0 :native/payload])
+        f (temp-file ".el" (str "(with-current-buffer " code
+                                " (let ((coding-system-for-write 'utf-8))"
+                                " (write-region (point-min) (point-max) (getenv \"HIVE_OUT\"))))"))
+        out (File/createTempFile "hive-vessel" ".out")]
+    (.deleteOnExit out)
+    (let [pb (doto (ProcessBuilder. ["emacs" "--batch" "-Q" "--eval"
+                                     "(setq coding-system-for-read 'utf-8)"
+                                     "-l" (.getPath f)])
+               (-> .environment (.put "HIVE_OUT" (.getPath out))))
+          p (.start pb)
+          err (future (slurp (.getErrorStream p)))]
+      (.waitFor p 60 TimeUnit/SECONDS)
+      {:exit (.exitValue p) :err @err :text (slurp out :encoding "UTF-8")})))
+
+(defn- expected-buffer [doc]
+  (apply str (map #(str (:text %) "\n") (d/render-lines doc))))
+
+(deftest ^:integration emacs-paints-exactly-the-rendered-lines
+  (testing "hand-picked doc with quotes, backslashes, links, unicode"
+    (let [{:keys [exit err text]} (emacs-panel-text sample-doc)]
+      (is (zero? exit) err)
+      (is (= (expected-buffer sample-doc) text))))
+  (testing "generated docs"
+    (doseq [doc (generated-docs 12)]
+      (let [{:keys [exit err text]} (emacs-panel-text doc)]
+        (is (zero? exit) err)
+        (is (= (expected-buffer doc) text) (pr-str doc))))))
+
+(deftest ^:integration elisp-literals-read-back
+  (let [strings (conj (gen/sample gen/string 40)
+                      "" "\"" "\\" "a\nb\tc" (str (char 0) (char 27) (char 127)) "ünï ✓")
+        ;; Each string travels twice: as an Elisp literal, and as the Elisp
+        ;; literal of its write-json encoding. Emacs decodes the JSON and
+        ;; the two must agree -- which checks both writers at once.
+        g (temp-file ".el"
+                     (str "(require 'json)"
+                          "(let ((expected (list "
+                          (str/join " " (map #(elisp/string-literal (wire/write-json %)) strings))
+                          ")) (actual (list "
+                          (str/join " " (map elisp/string-literal strings))
+                          ")))"
+                          " (princ (if (equal (mapcar #'json-read-from-string expected) actual) \"SAME\" \"DIFF\")))"))
+        r (sh"emacs" "--batch" "-Q" "-l" (.getPath g))]
+    (is (zero? (:exit r)) (:err r))
+    (is (= "SAME" (:out r))))
+  (testing "data literals keep keys addressable by symbol"
+    (let [code (str "(princ (let ((m '" (elisp/data-literal {:frame/phase :apply :paths ["a" "b"] "1" 2 "a b" true}) "))"
+                    " (list (alist-get 'frame/phase m) (alist-get 'paths m) (alist-get '\\1 m) (alist-get 'a\\ b m))))")
+          r (sh"emacs" "--batch" "-Q" "--eval" code)]
+      (is (zero? (:exit r)) (:err r))
+      (is (= "(apply (a b) 2 t)" (:out r))))))
+
+(def vim-rtp (.getPath (io/file "resources/hive-vessel/vim")))
+
+(defn- vim-exec-payload
+  "Execute one channel payload the way Vim's JSON channel does, then write
+   panel `t`'s lines to a file."
+  [payload]
+  (let [in (temp-file ".json" (wire/write-json payload))
+        out (File/createTempFile "hive-vessel" ".out")
+        errs (File/createTempFile "hive-vessel" ".err")
+        script (temp-file ".vim"
+                          (str "set nocompatible\n"
+                               "let &rtp = " (wire/write-json vim-rtp) " . ',' . &rtp\n"
+                               "let g:hive_vessel_headless = 1\n"
+                               "let p = json_decode(join(readfile(" (wire/write-json (.getPath in)) "), \"\\n\"))\n"
+                               "try\n"
+                               "  call call(p[1], p[2])\n"
+                               "catch\n"
+                               "  call writefile([v:exception, v:throwpoint], " (wire/write-json (.getPath errs)) ")\n"
+                               "endtry\n"
+                               "call writefile(hive_vessel#panel_lines('t'), " (wire/write-json (.getPath out)) ")\n"
+                               "if v:errmsg != ''\n"
+                               "  call writefile(['errmsg: ' . v:errmsg], " (wire/write-json (.getPath errs)) ", 'a')\n"
+                               "endif\n"
+                               "qall!\n"))
+        r (sh "vim" "-N" "-u" "NONE" "-i" "NONE" "-n" "-es" "-S" (.getPath script))]
+    (.deleteOnExit out)
+    (.deleteOnExit errs)
+    (assoc r
+           :text (slurp out)
+           :vim-error (not-empty (slurp errs)))))
+
+(deftest ^:integration vim-paints-exactly-the-rendered-lines
+  (doseq [doc (cons sample-doc (generated-docs 8))]
+    (let [payload (get-in (v/plan (v/standard-registry) (:vim v/reference-targets)
+                                  {:op :ui/show-panel :panel/id "t" :doc doc})
+                          [:ok :plan/ops 0 :native/payload])
+          {:keys [exit err text vim-error]} (vim-exec-payload payload)]
+      (is (nil? vim-error) (str vim-error (pr-str doc)))
+      (is (zero? exit) err)
+      (is (= (expected-buffer doc) text) (pr-str doc)))))
+
+(deftest ^:integration vim-decodes-write-json-losslessly
+  (let [data {"s" "q\"b\\n\nt\t\u0001ü" "n" [1 -2 3.5 nil true false] "m" {"k/x" []}}
+        in (temp-file ".json" (wire/write-json data))
+        out (File/createTempFile "hive-vessel" ".out")
+        script (temp-file ".vim"
+                          (str "let v = json_decode(join(readfile(" (wire/write-json (.getPath in)) "), \"\\n\"))\n"
+                               "call writefile([string(v.s == \"q\\\"b\\\\n\\nt\\t\\x01ü\"), string(v.n[2]), string(v.m)], "
+                               (wire/write-json (.getPath out)) ")\n"
+                               "qall!\n"))
+        r (sh"vim" "-N" "-u" "NONE" "-i" "NONE" "-n" "-es" "-S" (.getPath script))]
+    (is (zero? (:exit r)) (:err r))
+    (is (= ["1" "3.5" "{'k/x': []}"] (str/split-lines (slurp out))))))
