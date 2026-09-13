@@ -155,3 +155,38 @@
         r (sh"vim" "-N" "-u" "NONE" "-i" "NONE" "-n" "-es" "-S" (.getPath script))]
     (is (zero? (:exit r)) (:err r))
     (is (= ["1" "3.5" "{'k/x': []}"] (str/split-lines (slurp out))))))
+
+(deftest ^:integration vim-with-a-stale-ops-script-reports-it-instead-of-erroring
+  ;; A Vim that loaded an older hive_vessel/ops.vim from another directory
+  ;; keeps it (Vim refuses a second autoload definition, E1073). Sourcing the
+  ;; current wire.vim over it then calls the old OnEvent with a new signature;
+  ;; measured 2026-09-13 as E118 in a user's Vim. wire.vim must name the
+  ;; staleness in Status() and leave v:errmsg alone.
+  (let [old-rtp (.toFile (java.nio.file.Files/createTempDirectory "hive-vessel-old" (make-array java.nio.file.attribute.FileAttribute 0)))
+        old-ops (io/file old-rtp "autoload" "hive_vessel" "ops.vim")
+        out (File/createTempFile "hive-vessel" ".out")
+        script (temp-file ".vim"
+                          (str "vim9script\n"
+                               "set nocompatible\n"
+                               "g:hive_vessel_autoconnect = 0\n"
+                               "g:hive_vessel_headless = 1\n"
+                               "execute 'set runtimepath+=' .. fnameescape(" (wire/write-json (.getPath old-rtp)) ")\n"
+                               "import autoload 'hive_vessel/ops.vim' as oldops\n"
+                               "oldops.Surfaces()\n"
+                               "execute 'set runtimepath+=' .. fnameescape(" (wire/write-json vim-rtp) ")\n"
+                               "try\n"
+                               "  source " vim-rtp "/autoload/hive_vessel/ops.vim\n"
+                               "catch\n"
+                               "endtry\n"
+                               "source " vim-rtp "/autoload/hive_vessel/wire.vim\n"
+                               "writefile(['error=' .. hive_vessel#wire#Status().error, 'errmsg=' .. v:errmsg], " (wire/write-json (.getPath out)) ")\n"
+                               "qall!\n"))]
+    (.deleteOnExit out)
+    (io/make-parents old-ops)
+    (spit old-ops "vim9script\nexport def OnEvent()\nenddef\nexport def Surfaces(): list<string>\n  return ['editor']\nenddef\n")
+    (let [r (sh "vim" "-N" "-u" "NONE" "-i" "NONE" "-n" "-es" "-S" (.getPath script))
+          [error errmsg] (str/split-lines (slurp out))]
+      (is (zero? (:exit r)) (:err r))
+      (is (str/starts-with? error "error=stale hive_vessel/ops.vim loaded; restart Vim") error)
+      (is (str/includes? error "E118") error)
+      (is (= "errmsg=" errmsg)))))

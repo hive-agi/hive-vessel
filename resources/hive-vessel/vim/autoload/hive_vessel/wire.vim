@@ -170,4 +170,16 @@ export def Op(op: string, params: any): dict<any>
   endtry
 enddef
 
-ops.OnEvent(SendEvent)
+# A Vim that already holds an older hive_vessel/ops.vim, loaded from another
+# directory before this install, keeps it: Vim refuses to redefine an autoload
+# function under a second path (E1073). Its OnEvent may have another signature
+# (E118), so terminal_exit events stay undelivered until Vim restarts; every
+# other op keeps working, and Status() names the reason.
+try
+  ops.OnEvent(SendEvent)
+catch
+  last_error = 'stale hive_vessel/ops.vim loaded; restart Vim (' .. v:exception .. ')'
+  echohl WarningMsg
+  echomsg 'hive-vessel: ' .. last_error
+  echohl None
+endtry
