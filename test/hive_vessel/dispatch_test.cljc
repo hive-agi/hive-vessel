@@ -54,6 +54,12 @@
     (is (= :no-executor (get-in r [:vim :error :failure/reason])))
     (is (= 1 (count @log)))))
 
+(deftest envelopes-normalize-to-ops
+  (is (= notify (v/envelope->op notify)))
+  (is (= {:op :demo/frame :payload {:n 1}}
+         (v/envelope->op {:type :demo/frame :event-name "x" :payload {:n 1}})))
+  (is (= {:type "unqualified"} (v/envelope->op {:type "unqualified"}))))
+
 (deftest hooks-contribute-translators
   (let [hooks {v/hook-key (fn [] [{:translator/id :demo/x :translator/op :demo/x
                                    :translator/translate (fn [_ _] notify)}])}

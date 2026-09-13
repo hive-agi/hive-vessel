@@ -81,6 +81,14 @@ standard lowering for one vessel is a translator guarded by `:vessel/id`.
 - `hive-vessel.executor.vim-channel`: `(start!)`, then in Vim
   `:HiveVesselConnect 127.0.0.1:<port>` (plugin in `resources/hive-vessel/vim`),
   `(await-vim! server ms)`, `(target server)`
+- `hive-vessel.executor.sse`: the shared transport for `:json` vessels (a
+  DeepSeek Harness page, a VS Code extension host, a web harness).
+  `(start! {:port p :token t})`, then `(executor bridge)` as `:vessel/execute!`.
+  Clients read `GET /vessel/events` (`event: vessel`, one JSON line per op),
+  answer on `POST /vessel/reply`, and poll `GET /vessel/health`. A browser
+  must come from an allowed Origin (loopback by default); a non-browser
+  client sends no Origin and is gated by the token alone. The latest
+  `ui/show-panel` per panel id is replayed to clients that connect late.
 
 A host with its own bridge (hive-emacs's eval port, a VS Code JSON-lines pipe,
 a websocket) injects its own `:vessel/execute!`.
@@ -100,8 +108,9 @@ does not need this library on its classpath to contribute them.
 (v/dispatch! reg emacs-target {:op :my-addon/frame :frame f})
 (v/broadcast! reg [emacs-target vim-target web-target] {:op :my-addon/frame :frame f})
 
-;; any consumer that takes a delivery fn
-(v/sink reg vim-target my-addon/envelope->op)
+;; any consumer that takes a delivery fn; presenter envelopes
+;; {:type T :payload P} become {:op T :payload P}
+(v/sink reg vim-target v/envelope->op)
 ```
 
 ## Tests

@@ -62,6 +62,18 @@
   [hooks-maps]
   (apply standard-registry (map hook-translators hooks-maps)))
 
+(defn envelope->op
+  "Normalize a delivery message to an op. An op passes through; a
+   presentation envelope `{:type T :payload P}` (the shape addon presenters
+   deliver) becomes `{:op T :payload P}`. Anything else is returned unchanged
+   and fails compilation as :invalid-op."
+  [message]
+  (cond
+    (and (map? message) (contains? message :op)) message
+    (and (map? message) (qualified-keyword? (:type message)))
+    {:op (:type message) :payload (:payload message)}
+    :else message))
+
 (def register rule/register)
 (def register-all rule/register-all)
 (def plan plan/plan)

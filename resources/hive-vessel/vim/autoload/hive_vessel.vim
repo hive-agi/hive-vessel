@@ -100,14 +100,25 @@ function! hive_vessel#close_panel(id) abort
   return 1
 endfunction
 
+" `hide edit`: a plain `edit` refuses (E37) while the current buffer is modified.
 function! hive_vessel#open_file(file, line, column) abort
-  execute 'edit ' . fnameescape(a:file)
+  execute 'hide edit ' . fnameescape(a:file)
   call cursor(a:line, a:column)
   return bufnr('%')
 endfunction
 
+" Exact name lookup: bufnr() treats its argument as a file pattern.
+function! s:buffer_named(name) abort
+  for l:info in getbufinfo()
+    if l:info.name ==# a:name || fnamemodify(l:info.name, ':t') ==# a:name
+      return l:info.bufnr
+    endif
+  endfor
+  return -1
+endfunction
+
 function! hive_vessel#send_to_terminal(name, text) abort
-  let l:bnr = bufnr(a:name)
+  let l:bnr = s:buffer_named(a:name)
   if l:bnr == -1
     throw 'hive_vessel: no terminal buffer ' . a:name
   endif
