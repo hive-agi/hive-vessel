@@ -97,6 +97,52 @@ standard lowering for one vessel is a translator guarded by `:vessel/id`.
 A host with its own bridge (hive-emacs's eval port, a VS Code JSON-lines pipe,
 a websocket) injects its own `:vessel/execute!`.
 
+`hive-vessel.wire` carries the JSON both ways without a dependency:
+`write-json` for every payload that crosses a process boundary, `read-json`
+for what comes back.
+
+## Editor wire
+
+`hive-vessel.editor-wire.*` is the session protocol a remote editor speaks to
+hive, merged from the former `hive-editor-wire` library with wire v1
+unchanged. The editor connects OUT to a loopback TCP server its hive addon
+owns, finds it through a private discovery file
+(`${XDG_RUNTIME_DIR:-/tmp}/hive-editor-wire/<editor>.json`, mode 0600),
+authenticates with a token, and answers `HiveOp` calls whose names are the
+hive-spi editor port verbs (`find-file`, `list-buffers`, `terminal-spawn`,
+...). One JSON array per line, in Vim's JSON channel format, so a Vim client
+needs no framing code and VS Code adopts the same format at no cost.
+
+| namespace                                   | stratum                                                                     |
+|---------------------------------------------|-----------------------------------------------------------------------------|
+| `editor-wire.ops`                           | op vocabulary, Result envelope, Result -> MCP (cljc)                        |
+| `editor-wire.codec`                         | frame classification and builders (cljc)                                    |
+| `editor-wire.schema`                        | malli value objects (cljc)                                                  |
+| `editor-wire.pending`, `editor-wire.session`| pure session machine: handshake, correlation, expiry, effects as data (cljc)|
+| `editor-wire.transport`                     | `ITransport` and `ICaller` ports, recording fake (cljc)                     |
+| `editor-wire.hub`                           | every session of one editor kind; `ICaller` over the active one             |
+| `editor-wire.server`                        | loopback TCP boundary plus discovery file                                   |
+| `editor-wire.port`, `.terminal`, `.vessel`  | `RemoteEditorPort` (hive-spi), `RemoteTerminal` (hive-addon), `IVessel`     |
+
+```clojure
+(require '[hive-vessel.editor-wire.server :as server]
+         '[hive-vessel.editor-wire.port :as port])
+
+(def srv (server/start! {:editor "vim"}))          ; writes the discovery file
+(def editor (port/remote-editor-port (:hub srv)))  ; IEditorPort over the active Vim
+(server/stop! srv)                                 ; closes sessions, removes the file
+```
+
+The three adapter namespaces (`port`, `terminal`, `vessel`) need
+`io.github.hive-agi/hive-spi` and `io.github.hive-agi/hive-addon` on the
+consumer's classpath. This library does not declare them (provided scope), so
+its runtime dependencies stay Clojure and malli; every other `editor-wire`
+namespace loads without them.
+
+A reference Vim 9 client lives in `resources/hive-vessel/editor-wire/vim`:
+`:HiveWireConnect` (autoconnects through discovery, retries), `:HiveWireStatus`,
+and a `g:HiveOp` implementing every op of the vocabulary.
+
 ## Addons
 
 An addon exposes translators under the IAddon hook `:vessel/translators` (a

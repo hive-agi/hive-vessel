@@ -1,8 +1,9 @@
 (ns hive-vessel.wire
-  "JSON-safe projection and a dependency-free JSON writer, shared by every
-   dialect that crosses a process boundary as JSON (Vim channels, VS Code,
-   web harnesses)."
-  (:require [clojure.string :as str]))
+  "JSON-safe projection and a dependency-free JSON writer and reader, shared
+   by every dialect and transport that crosses a process boundary as JSON
+   (Vim channels, VS Code, web harnesses, the editor wire)."
+  (:require [clojure.string :as str]
+            [hive-vessel.wire.reader :as reader]))
 
 ;; SPDX-License-Identifier: MIT
 
@@ -65,3 +66,9 @@
       (map? x) (str "{" (str/join "," (map (fn [[k v]] (str (json-string k) ":" (write-json v))) x)) "}")
       (vector? x) (str "[" (str/join "," (map write-json x)) "]")
       :else (json-string (str x)))))
+
+(defn read-json
+  "Parse JSON TEXT into data: string-keyed maps, vectors, longs, doubles.
+   Throws ex-info on malformed input. See hive-vessel.wire.reader."
+  [text]
+  (reader/read-json text))

@@ -1,6 +1,6 @@
 {:project-id "hive-vessel"
  :parent "hive"
- :description "Vessel action contract as a leaf lib: addons emit ops, translators (plain data) lower them to standard :ui/* primitives and then to a vessel dialect (:elisp, :vim-channel, :json, :text), and an injected executor runs them in Emacs, Vim, VS Code, a web harness or a terminal. Deps: clojure + malli only. cljc."
+ :description "Vessel action contract as a leaf lib: addons emit ops, translators (plain data) lower them to standard :ui/* primitives and then to a vessel dialect (:elisp, :vim-channel, :json, :text), and an injected executor runs them in Emacs, Vim, VS Code, a web harness or a terminal. Also hive-vessel.editor-wire.*: the session protocol a remote editor speaks to hive (hello/token/discovery, HiveOp calls named after the hive-spi editor port verbs, RemoteEditorPort, RemoteTerminal, IVessel), merged from the retired hive-editor-wire repo. Deps: clojure + malli only; hive-spi and hive-addon are provided-scope for the three adapter namespaces. cljc."
  :language :clojure
- :tags ["hive-vessel" "vessel" "multi-vessel" "contract" "leaf-lib" "dip" "ocp" "emacs" "vim" "vscode" "web"]
+ :tags ["hive-vessel" "vessel" "multi-vessel" "contract" "leaf-lib" "dip" "ocp" "emacs" "vim" "vscode" "web" "editor-wire" "wire" "session-protocol"]
  :carto {:source-roots ["dev" "resources" "src" "test"]}}
