@@ -3,3 +3,5 @@ target/
 .nrepl-port
 .lsp/.cache/
 .clj-kondo/.cache/
+.lsp/
+.clj-kondo/

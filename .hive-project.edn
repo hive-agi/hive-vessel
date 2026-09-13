@@ -3,4 +3,4 @@
  :description "Vessel action contract as a leaf lib: addons emit ops, translators (plain data) lower them to standard :ui/* primitives and then to a vessel dialect (:elisp, :vim-channel, :json, :text), and an injected executor runs them in Emacs, Vim, VS Code, a web harness or a terminal. Deps: clojure + malli only. cljc."
  :language :clojure
  :tags ["hive-vessel" "vessel" "multi-vessel" "contract" "leaf-lib" "dip" "ocp" "emacs" "vim" "vscode" "web"]
- :carto {:source-roots ["src" "test" "dev"]}}
+ :carto {:source-roots ["dev" "resources" "src" "test"]}}
