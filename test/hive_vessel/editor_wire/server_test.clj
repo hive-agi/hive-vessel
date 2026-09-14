@@ -62,8 +62,12 @@
   (with-server [srv {:editor "vim" :dir (temp-dir)}]
     (let [c (client (:port srv))]
       (send-line! c [1 (codec/hello {:token (:token srv) :editor "vim"})])
-      (is (= [1 (ops/ok {"session" (first (hub/session-ids (:hub srv))) "wire" 1})]
-             (read-frame c)))
+      ;; Read the reply BEFORE asking the hub for the session id: the accept
+      ;; thread registers the session, and only the hello reply proves it has.
+      (let [reply (read-frame c)
+            sid (first (hub/session-ids (:hub srv)))]
+        (is (some? sid))
+        (is (= [1 (ops/ok {"session" sid "wire" 1})] reply)))
       (let [result (future (transport/call! (:hub srv) "insert-text" {"text" "héllo\n"}))
             call (read-frame c)]
         (is (= :server-call (codec/classify call)))

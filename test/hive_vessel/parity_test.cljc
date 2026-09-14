@@ -14,7 +14,8 @@
             [hive-vessel.dialect.elisp :as elisp]
             [hive-vessel.doc :as d]
             [hive-vessel.schema :as s]
-            [malli.generator :as mg]))
+            [malli.generator :as mg]
+            [hive-vessel.test-util :as tu]))
 
 ;; SPDX-License-Identifier: MIT
 
@@ -28,15 +29,6 @@
   (let [r (v/plan standard target op)]
     (is (:ok r) (pr-str (:vessel/id target) (:error r)))
     (get-in r [:ok :plan/ops 0 :native/payload])))
-
-(defn- ordered-in?
-  "True iff every literal in LITERALS occurs in CODE, each after the previous."
-  [code literals]
-  (loop [from 0 [l & more] literals]
-    (if (nil? l)
-      true
-      (let [i (str/index-of code l from)]
-        (and i (recur (+ i (count l)) more))))))
 
 ;; =============================================================================
 ;; Extractors: the painted content a dialect payload carries
@@ -96,7 +88,7 @@
             (let [p (payload target op)
                   got (extract dialect p)]
               (if (= ::literal got)
-                (ordered-in? p literals)
+                (tu/ordered-in? p literals)
                 (= expected got))))
           targets))
 

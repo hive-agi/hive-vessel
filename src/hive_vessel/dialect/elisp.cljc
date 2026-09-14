@@ -10,7 +10,9 @@
    the typed escape hatch for addons that ship their own Elisp. Arguments are
    quoted data (maps become alists with symbol keys), never spliced code."
   (:require [clojure.string :as str]
-            [hive-vessel.doc :as doc]))
+            [hive-vessel.doc :as doc]
+            [hive-vessel.schema :as s]
+            [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
 
@@ -171,6 +173,21 @@
        (apply str (map (fn [a] (str " '" (data-literal a))) args))
        ")"))
 
+(def Code
+  "An :elisp native payload: one self-contained form as source text."
+  [:string {:min 1}])
+
+(def Call
+  "The :elisp/call dialect call: a named function applied to quoted data."
+  [:map [:op [:= :elisp/call]] [:fn s/NonBlank] [:args {:optional true} [:sequential :any]]])
+
+(m/=> notify-code [:=> [:cat s/Notify] Code])
+(m/=> show-panel-code [:=> [:cat s/ShowPanel] Code])
+(m/=> close-panel-code [:=> [:cat s/ClosePanel] Code])
+(m/=> open-file-code [:=> [:cat s/OpenFile] Code])
+(m/=> send-to-terminal-code [:=> [:cat s/SendToTerminal] Code])
+(m/=> call-code [:=> [:cat Call] Code])
+
 (def ^:private when-elisp {:vessel/dialect dialect})
 
 (defn- lowering [op f]
@@ -180,10 +197,11 @@
    :translator/translate (fn [o _target] (native (f o)))})
 
 (def translators
-  [(lowering :ui/notify notify-code)
-   (lowering :ui/show-panel show-panel-code)
-   (lowering :ui/close-panel close-panel-code)
-   (lowering :ui/open-file open-file-code)
-   (lowering :ui/send-to-terminal send-to-terminal-code)
-   (assoc (lowering :elisp/call call-code)
+  ;; Each lowering is reached through its var at call time, never captured.
+  [(lowering :ui/notify #(notify-code %))
+   (lowering :ui/show-panel #(show-panel-code %))
+   (lowering :ui/close-panel #(close-panel-code %))
+   (lowering :ui/open-file #(open-file-code %))
+   (lowering :ui/send-to-terminal #(send-to-terminal-code %))
+   (assoc (lowering :elisp/call #(call-code %))
           :translator/accepts [:map [:fn [:string {:min 1}]] [:args {:optional true} [:sequential :any]]])])
