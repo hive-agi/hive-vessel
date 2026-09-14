@@ -23,7 +23,8 @@
            (java.io IOException OutputStream)
            (java.net InetAddress InetSocketAddress URLDecoder)
            (java.nio.charset StandardCharsets)
-           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)))
+           (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)
+[java.security MessageDigest]))
 
 ;; SPDX-License-Identifier: MIT
 
@@ -92,6 +93,15 @@
     (.write out (.getBytes text StandardCharsets/UTF_8))
     (.flush out)))
 
+(defn token-matches?
+  "True iff PRESENTED equals EXPECTED, compared over their UTF-8 bytes in
+   constant time for equal lengths (MessageDigest/isEqual). A missing or
+   non-string PRESENTED never matches."
+  [^String expected presented]
+  (boolean (and (string? presented)
+                (MessageDigest/isEqual (.getBytes expected StandardCharsets/UTF_8)
+                                       (.getBytes ^String presented StandardCharsets/UTF_8)))))
+
 (defn- admitted?
   "nil when EX may proceed, else the refusal status."
   [{:keys [allowed-origin? token]} ^HttpExchange ex]
@@ -99,7 +109,7 @@
         params (query-params (.getRawQuery (.getRequestURI ex)))]
     (cond
       (and origin (not (allowed-origin? origin))) 403
-      (and token (not= token (get params "token"))) 401
+      (and token (not (token-matches? token (get params "token")))) 401
       :else nil)))
 
 (defn- drop-client! [state id]

@@ -143,6 +143,36 @@
       (is (zero? exit) err)
       (is (= (expected-buffer doc) text) (pr-str doc)))))
 
+(deftest ^:integration vim-panel-ids-with-a-slash-are-not-read-as-paths
+  ;; Measured 2026-09-13 by the hive-olympus-vim e2e: a panel id like
+  ;; olympus/tab-2 named the buffer hive://olympus/tab-2, which Vim announced
+  ;; as "[New DIRECTORY]" on load. Silent -es mode hides file messages, so
+  ;; this runs a terminal Vim and reads its raw output.
+  (let [payload (get-in (v/plan (v/standard-registry) (:vim v/reference-targets)
+                                {:op :ui/show-panel :panel/id "olympus/tab-2" :doc sample-doc})
+                        [:ok :plan/ops 0 :native/payload])
+        in (temp-file ".json" (wire/write-json payload))
+        out (File/createTempFile "hive-vessel" ".out")
+        script (temp-file ".vim"
+                          (str "set nocompatible\n"
+                               "let &rtp = " (wire/write-json vim-rtp) " . ',' . &rtp\n"
+                               "let g:hive_vessel_headless = 1\n"
+                               "let p = json_decode(join(readfile(" (wire/write-json (.getPath in)) "), \"\\n\"))\n"
+                               "call call(p[1], p[2])\n"
+                               "call writefile(hive_vessel#panel_lines('olympus/tab-2'), " (wire/write-json (.getPath out)) ")\n"
+                               "qall!\n"))
+        p (-> (ProcessBuilder. ["vim" "-N" "-u" "NONE" "-i" "NONE" "-n" "--not-a-term" "-T" "dumb" "-S" (.getPath script)])
+              (.redirectErrorStream true)
+              (.start))
+        raw (future (slurp (.getInputStream p)))]
+    (.deleteOnExit out)
+    (when-not (.waitFor p 60 TimeUnit/SECONDS)
+      (.destroyForcibly p)
+      (throw (ex-info "vim timed out" {})))
+    (is (zero? (.exitValue p)))
+    (is (not (str/includes? @raw "New DIRECTORY")) @raw)
+    (is (= (expected-buffer sample-doc) (slurp out)))))
+
 (deftest ^:integration vim-decodes-write-json-losslessly
   (let [data {"s" "q\"b\\n\nt\t\u0001ü" "n" [1 -2 3.5 nil true false] "m" {"k/x" []}}
         in (temp-file ".json" (wire/write-json data))

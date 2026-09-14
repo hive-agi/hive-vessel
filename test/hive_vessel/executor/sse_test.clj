@@ -5,7 +5,10 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is use-fixtures]]
             [hive-vessel.core :as v]
-            [hive-vessel.executor.sse :as sse])
+            [hive-vessel.executor.sse :as sse]
+            [clojure.test.check.clojure-test :refer [defspec]]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop])
   (:import (java.io BufferedReader InputStreamReader)
            (java.net URI)
            (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
@@ -142,6 +145,22 @@
     (fn []
       (is (= 401 (.statusCode (request *bridge* "GET" "/vessel/health"))))
       (is (= 200 (.statusCode (request *bridge* "GET" "/vessel/health?token=s3cret")))))))
+
+(deftest a-wrong-token-of-the-same-length-is-refused
+  (with-bridge {:token "s3cret"}
+    (fn []
+      (is (= 401 (.statusCode (request *bridge* "GET" "/vessel/health?token=s3cre7"))))
+      (is (= 401 (.statusCode (request *bridge* "GET" "/vessel/health?token=S3CRET"))))
+      (is (= 401 (.statusCode (request *bridge* "GET" "/vessel/health?token="))))
+      (is (= 200 (.statusCode (request *bridge* "GET" "/vessel/health?token=s3cret")))))))
+
+(defspec token-matches-exactly-its-own-value 200
+  (prop/for-all [expected (gen/not-empty gen/string)
+                 other gen/string]
+    (and (true? (sse/token-matches? expected expected))
+         (= (= expected other) (sse/token-matches? expected other))
+         (false? (sse/token-matches? expected nil))
+         (false? (sse/token-matches? expected (str expected "x"))))))
 
 (deftest wrong-methods-are-refused
   (is (= 405 (.statusCode (request *bridge* "POST" "/vessel/health" {} "x"))))

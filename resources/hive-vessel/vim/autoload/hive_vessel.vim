@@ -31,10 +31,12 @@ function! s:panel_buffer(id) abort
   let l:bnr = get(s:panels, a:id, -1)
   if l:bnr == -1 || !bufexists(l:bnr)
     let l:bnr = bufadd('hive://' . a:id)
-    call bufload(l:bnr)
+    " Options first: a loaded buffer named like a path (a panel id with a
+    " slash) would otherwise be read as a file and announce [New DIRECTORY].
     call setbufvar(l:bnr, '&buftype', 'nofile')
     call setbufvar(l:bnr, '&bufhidden', 'hide')
     call setbufvar(l:bnr, '&swapfile', 0)
+    silent call bufload(l:bnr)
     let s:panels[a:id] = l:bnr
   endif
   return l:bnr

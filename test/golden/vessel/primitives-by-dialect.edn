@@ -1,0 +1,351 @@
+{:emacs
+ {:close-panel
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(let ((buf (get-buffer \"*hive:olympus/tab-2*\"))) (when buf (quit-windows-on buf t) (when (buffer-live-p buf) (kill-buffer buf)) t))"}],
+  :notify-error
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(display-warning 'hive \"boom\\nsecond line\" :error)"}],
+  :notify-info
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload "(message \"%s\" \"frame 7 applied\")"}],
+  :open-file
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(progn (find-file \"/tmp/a b.clj\") (goto-char (point-min)) (forward-line 2) (move-to-column 6) (buffer-name))"}],
+  :open-file-defaults
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(progn (find-file \"/tmp/a.clj\") (goto-char (point-min)) (buffer-name))"}],
+  :send-to-terminal
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(let* ((buf (or (get-buffer \"*vterm*\") (error \"no terminal buffer %s\" \"*vterm*\"))) (text \"ls -la\\n\")) (with-current-buffer buf (cond ((and (derived-mode-p 'vterm-mode) (fboundp 'vterm-send-string)) (vterm-send-string text)) ((derived-mode-p 'term-mode) (term-send-raw-string text)) (t (process-send-string (get-buffer-process buf) text)))) t)"}],
+  :show-panel
+  [{:op :vessel/native,
+    :native/dialect :elisp,
+    :native/payload
+    "(let ((buf (get-buffer-create \"*hive:olympus/tab-2*\"))) (require 'diff-mode nil t) (with-current-buffer buf (special-mode) (let ((inhibit-read-only t)) (erase-buffer) (insert (propertize \"Carto \\\"Flow\\\" \\\\ #3\" 'face '(:inherit bold :height 1.2)) \"\\n\") (insert \"\" \"\\n\") (insert (propertize \"apply write-form\" 'face 'bold) \"\\n\") (insert \"\" \"\\n\") (insert (propertize \"succeeded\" 'face 'success) \"\\n\") (insert \"\" \"\\n\") (insert \"paths  : src/a.clj\" \"\\n\") (insert \"         src/b.clj\" \"\\n\") (insert \"verify : ok\" \"\\n\") (insert \"\" \"\\n\") (insert \"  - one\" \"\\n\") (insert \"  - two\" \"\\n\") (insert \"    more\" \"\\n\") (insert \"\" \"\\n\") (insert (propertize \"    (defn f [] \\\"x\\\")\" 'face 'font-lock-constant-face) \"\\n\") (insert \"\" \"\\n\") (insert (propertize \"@@ -1,2 +1,2 @@\" 'face 'diff-hunk-header) \"\\n\") (insert (propertize \"-(old)\" 'face 'diff-removed) \"\\n\") (insert (propertize \"+(new ü)\" 'face 'diff-added) \"\\n\") (insert \" context\" \"\\n\") (insert \"\" \"\\n\") (insert-text-button \"open a\" 'follow-link t 'action (lambda (_button) (progn (find-file-other-window \"/tmp/a.clj\") (goto-char (point-min)) (forward-line 1) (buffer-name)))) (insert \"\\n\")) (goto-char (point-min))) (unless noninteractive (display-buffer buf)) (buffer-name buf))"}]},
+ :tmux
+ {:close-panel
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload
+    #:text{:panel "olympus/tab-2", :close? true, :lines []}}],
+  :notify-error
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload
+    #:text{:lines ["[error] boom" "[error] second line"]}}],
+  :notify-info
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload #:text{:lines ["[info] frame 7 applied"]}}],
+  :open-file
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload #:text{:lines ["open /tmp/a b.clj:3:7"]}}],
+  :open-file-defaults
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload #:text{:lines ["open /tmp/a.clj"]}}],
+  :send-to-terminal
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload
+    #:text{:terminal "*vterm*", :lines ["ls -la"], :keys "ls -la\n"}}],
+  :show-panel
+  [{:op :vessel/native,
+    :native/dialect :text,
+    :native/payload
+    #:text{:panel "olympus/tab-2",
+           :lines
+           ["Carto \"Flow\" \\ #3"
+            ""
+            "apply write-form"
+            ""
+            "succeeded"
+            ""
+            "paths  : src/a.clj"
+            "         src/b.clj"
+            "verify : ok"
+            ""
+            "  - one"
+            "  - two"
+            "    more"
+            ""
+            "    (defn f [] \"x\")"
+            ""
+            "@@ -1,2 +1,2 @@"
+            "-(old)"
+            "+(new ü)"
+            " context"
+            ""
+            "open a"],
+           :face-lines
+           [{:text "Carto \"Flow\" \\ #3", :face :title}
+            {:text "", :face :plain}
+            {:text "apply write-form", :face :heading}
+            {:text "", :face :plain}
+            {:text "succeeded", :face :success}
+            {:text "", :face :plain}
+            {:text "paths  : src/a.clj", :face :plain}
+            {:text "         src/b.clj", :face :plain}
+            {:text "verify : ok", :face :plain}
+            {:text "", :face :plain}
+            {:text "  - one", :face :plain}
+            {:text "  - two", :face :plain}
+            {:text "    more", :face :plain}
+            {:text "", :face :plain}
+            {:text "    (defn f [] \"x\")", :face :code}
+            {:text "", :face :plain}
+            {:text "@@ -1,2 +1,2 @@", :face :hunk}
+            {:text "-(old)", :face :removed}
+            {:text "+(new ü)", :face :added}
+            {:text " context", :face :plain}
+            {:text "", :face :plain}
+            {:text "open a",
+             :face :link,
+             :file "/tmp/a.clj",
+             :line 2}]}}]},
+ :vim
+ {:close-panel
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#close_panel" ["olympus/tab-2"]]}],
+  :notify-error
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#notify" ["boom\nsecond line" "error"]]}],
+  :notify-info
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#notify" ["frame 7 applied" "info"]]}],
+  :open-file
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#open_file" ["/tmp/a b.clj" 3 7]]}],
+  :open-file-defaults
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#open_file" ["/tmp/a.clj" 1 1]]}],
+  :send-to-terminal
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call" "hive_vessel#send_to_terminal" ["*vterm*" "ls -la\n"]]}],
+  :show-panel
+  [{:op :vessel/native,
+    :native/dialect :vim-channel,
+    :native/payload
+    ["call"
+     "hive_vessel#show_panel"
+     ["olympus/tab-2"
+      "Carto \"Flow\" \\ #3"
+      [{"text" "Carto \"Flow\" \\ #3", "face" "title"}
+       {"text" "", "face" "plain"}
+       {"text" "apply write-form", "face" "heading"}
+       {"text" "", "face" "plain"}
+       {"text" "succeeded", "face" "success"}
+       {"text" "", "face" "plain"}
+       {"text" "paths  : src/a.clj", "face" "plain"}
+       {"text" "         src/b.clj", "face" "plain"}
+       {"text" "verify : ok", "face" "plain"}
+       {"text" "", "face" "plain"}
+       {"text" "  - one", "face" "plain"}
+       {"text" "  - two", "face" "plain"}
+       {"text" "    more", "face" "plain"}
+       {"text" "", "face" "plain"}
+       {"text" "    (defn f [] \"x\")", "face" "code"}
+       {"text" "", "face" "plain"}
+       {"text" "@@ -1,2 +1,2 @@", "face" "hunk"}
+       {"text" "-(old)", "face" "removed"}
+       {"text" "+(new ü)", "face" "added"}
+       {"text" " context", "face" "plain"}
+       {"text" "", "face" "plain"}
+       {"text" "open a",
+        "face" "link",
+        "file" "/tmp/a.clj",
+        "line" 2}]]]}]},
+ :vscode
+ {:close-panel
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"panel/id" "olympus/tab-2", "op" "ui/close-panel"}}],
+  :notify-error
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"message" "boom\nsecond line",
+     "level" "error",
+     "op" "ui/notify"}}],
+  :notify-info
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload {"message" "frame 7 applied", "op" "ui/notify"}}],
+  :open-file
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"file" "/tmp/a b.clj",
+     "line" 3,
+     "column" 7,
+     "op" "ui/open-file"}}],
+  :open-file-defaults
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload {"file" "/tmp/a.clj", "op" "ui/open-file"}}],
+  :send-to-terminal
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"terminal" "*vterm*",
+     "text" "ls -la\n",
+     "op" "ui/send-to-terminal"}}],
+  :show-panel
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"panel/id" "olympus/tab-2",
+     "doc"
+     {"doc/title" "Carto \"Flow\" \\ #3",
+      "doc/blocks"
+      [{"block/type" "heading", "text" "apply write-form"}
+       {"block/type" "para", "text" "succeeded", "tone" "success"}
+       {"block/type" "fields",
+        "fields" [["paths" "src/a.clj\nsrc/b.clj"] ["verify" "ok"]]}
+       {"block/type" "list", "items" ["one" "two\nmore"]}
+       {"block/type" "code",
+        "text" "(defn f [] \"x\")",
+        "lang" "clojure"}
+       {"block/type" "diff",
+        "text" "@@ -1,2 +1,2 @@\n-(old)\n+(new ü)\n context"}
+       {"block/type" "link",
+        "text" "open a",
+        "file" "/tmp/a.clj",
+        "line" 2}]},
+     "op" "ui/show-panel",
+     "lines"
+     [{"text" "Carto \"Flow\" \\ #3", "face" "title"}
+      {"text" "", "face" "plain"}
+      {"text" "apply write-form", "face" "heading"}
+      {"text" "", "face" "plain"}
+      {"text" "succeeded", "face" "success"}
+      {"text" "", "face" "plain"}
+      {"text" "paths  : src/a.clj", "face" "plain"}
+      {"text" "         src/b.clj", "face" "plain"}
+      {"text" "verify : ok", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "  - one", "face" "plain"}
+      {"text" "  - two", "face" "plain"}
+      {"text" "    more", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "    (defn f [] \"x\")", "face" "code"}
+      {"text" "", "face" "plain"}
+      {"text" "@@ -1,2 +1,2 @@", "face" "hunk"}
+      {"text" "-(old)", "face" "removed"}
+      {"text" "+(new ü)", "face" "added"}
+      {"text" " context", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "open a",
+       "face" "link",
+       "file" "/tmp/a.clj",
+       "line" 2}]}}]},
+ :web
+ {:close-panel
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"panel/id" "olympus/tab-2", "op" "ui/close-panel"}}],
+  :notify-error
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"message" "boom\nsecond line",
+     "level" "error",
+     "op" "ui/notify"}}],
+  :notify-info
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload {"message" "frame 7 applied", "op" "ui/notify"}}],
+  :open-file
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"file" "/tmp/a b.clj",
+     "line" 3,
+     "column" 7,
+     "op" "ui/open-file"}}],
+  :open-file-defaults
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload {"file" "/tmp/a.clj", "op" "ui/open-file"}}],
+  :send-to-terminal
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"terminal" "*vterm*",
+     "text" "ls -la\n",
+     "op" "ui/send-to-terminal"}}],
+  :show-panel
+  [{:op :vessel/native,
+    :native/dialect :json,
+    :native/payload
+    {"panel/id" "olympus/tab-2",
+     "doc"
+     {"doc/title" "Carto \"Flow\" \\ #3",
+      "doc/blocks"
+      [{"block/type" "heading", "text" "apply write-form"}
+       {"block/type" "para", "text" "succeeded", "tone" "success"}
+       {"block/type" "fields",
+        "fields" [["paths" "src/a.clj\nsrc/b.clj"] ["verify" "ok"]]}
+       {"block/type" "list", "items" ["one" "two\nmore"]}
+       {"block/type" "code",
+        "text" "(defn f [] \"x\")",
+        "lang" "clojure"}
+       {"block/type" "diff",
+        "text" "@@ -1,2 +1,2 @@\n-(old)\n+(new ü)\n context"}
+       {"block/type" "link",
+        "text" "open a",
+        "file" "/tmp/a.clj",
+        "line" 2}]},
+     "op" "ui/show-panel",
+     "lines"
+     [{"text" "Carto \"Flow\" \\ #3", "face" "title"}
+      {"text" "", "face" "plain"}
+      {"text" "apply write-form", "face" "heading"}
+      {"text" "", "face" "plain"}
+      {"text" "succeeded", "face" "success"}
+      {"text" "", "face" "plain"}
+      {"text" "paths  : src/a.clj", "face" "plain"}
+      {"text" "         src/b.clj", "face" "plain"}
+      {"text" "verify : ok", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "  - one", "face" "plain"}
+      {"text" "  - two", "face" "plain"}
+      {"text" "    more", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "    (defn f [] \"x\")", "face" "code"}
+      {"text" "", "face" "plain"}
+      {"text" "@@ -1,2 +1,2 @@", "face" "hunk"}
+      {"text" "-(old)", "face" "removed"}
+      {"text" "+(new ü)", "face" "added"}
+      {"text" " context", "face" "plain"}
+      {"text" "", "face" "plain"}
+      {"text" "open a",
+       "face" "link",
+       "file" "/tmp/a.clj",
+       "line" 2}]}}]}}
