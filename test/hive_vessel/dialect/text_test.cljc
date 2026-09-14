@@ -58,8 +58,9 @@
   hive-vessel.dialect.text/open-file-payload
   {:in s/OpenFile
    :out text/Payload
-   :rel (fn [{:keys [file] :as op} {:text/keys [lines]}]
-          (= [(str "open " file (location-suffix op))] lines))
+   :rel (fn [{:keys [file] :as op} {:text/keys [lines open]}]
+          (and (= [(str "open " file (location-suffix op))] lines)
+               (= (select-keys op [:file :line :column]) open)))
    :mutation true
    :num-tests 100})
 

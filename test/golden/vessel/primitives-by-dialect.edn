@@ -125,11 +125,14 @@
   :open-file
   [{:op :vessel/native,
     :native/dialect :text,
-    :native/payload #:text{:lines ["open /tmp/a b.clj:3:7"]}}],
+    :native/payload
+    #:text{:lines ["open /tmp/a b.clj:3:7"],
+           :open {:file "/tmp/a b.clj", :line 3, :column 7}}}],
   :open-file-defaults
   [{:op :vessel/native,
     :native/dialect :text,
-    :native/payload #:text{:lines ["open /tmp/a.clj"]}}],
+    :native/payload
+    #:text{:lines ["open /tmp/a.clj"], :open {:file "/tmp/a.clj"}}}],
   :send-to-terminal
   [{:op :vessel/native,
     :native/dialect :text,

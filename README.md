@@ -91,6 +91,11 @@ standard lowering for one vessel is a translator guarded by `:vessel/id`.
   and no hello: the manual fallback, served by the same plugin.
   `hive-vim.vessel/vessel-target` is a third target for this dialect, over
   hive-vim's own transport.
+- `hive-vessel.executor.tmux`: the `:text` executor for a tmux server through the
+  tmux CLI (`(target {:session "hive" :socket-name ...})`): a panel is a window
+  named `hive:<panel>` respawned with the rendered lines, close kills it, keys go
+  to the named pane, a notify to `display-message`, open-file to `$EDITOR` in a
+  new window. The tmux port (`:run!`) is injectable.
 - `hive-vessel.executor.sse`: the shared transport for `:json` vessels (a
   DeepSeek Harness page, a VS Code extension host, a web harness).
   `(start! {:port p :token t})`, then `(executor bridge)` as `:vessel/execute!`.

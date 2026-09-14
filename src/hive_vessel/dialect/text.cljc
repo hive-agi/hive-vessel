@@ -20,14 +20,19 @@
 
 (def Payload
   "A :text native payload. Every op carries :text/lines; a panel op names
-   its panel, a terminal op its terminal and the raw keys."
+   its panel, a terminal op its terminal and the raw keys, an open-file op
+   its location as data so an executor never parses the line."
   [:map
    [:text/lines [:vector :string]]
    [:text/panel {:optional true} s/NonBlank]
    [:text/close? {:optional true} :boolean]
    [:text/face-lines {:optional true} [:vector s/RenderedLine]]
    [:text/terminal {:optional true} s/NonBlank]
-   [:text/keys {:optional true} :string]])
+   [:text/keys {:optional true} :string]
+   [:text/open {:optional true} [:map
+                                 [:file s/NonBlank]
+                                 [:line {:optional true} [:int {:min 1}]]
+                                 [:column {:optional true} [:int {:min 1}]]]]])
 
 (defn notify-payload
   "The :text payload of a :ui/notify op: one `[level] ` tagged line per
@@ -56,12 +61,16 @@
 (m/=> close-panel-payload [:=> [:cat s/ClosePanel] Payload])
 
 (defn open-file-payload
-  "`open FILE[:LINE[:COLUMN]]`. A column without a line reads as line 1, so
-   no given field is dropped."
+  "`open FILE[:LINE[:COLUMN]]` as the line, plus the location as data under
+   :text/open. A column without a line reads as line 1, so no given field is
+   dropped."
   [{:keys [file line column]}]
   {:text/lines [(str "open " file
                      (when (or line column)
-                       (str ":" (or line 1) (when column (str ":" column)))))]})
+                       (str ":" (or line 1) (when column (str ":" column)))))]
+   :text/open (cond-> {:file file}
+                line (assoc :line line)
+                column (assoc :column column))})
 
 (m/=> open-file-payload [:=> [:cat s/OpenFile] Payload])
 
