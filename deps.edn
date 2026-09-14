@@ -1,10 +1,11 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.5"}
-        metosin/malli {:mvn/version "0.20.1"}}
+        metosin/malli {:mvn/version "0.20.1"}
+        io.github.hive-agi/hive-spi {:mvn/version "1.1.1"}}
 
  :aliases
  {:dev  {:extra-paths ["dev" "test"]
-         :extra-deps {org.clojure/data.json {:mvn/version "2.5.2"} io.github.hive-agi/hive-spi {:mvn/version "1.1.0"} io.github.hive-agi/hive-addon {:mvn/version "1.0.5"}}}
+         :extra-deps {org.clojure/data.json {:mvn/version "2.5.2"} io.github.hive-agi/hive-spi {:mvn/version "1.1.1"} io.github.hive-agi/hive-addon {:mvn/version "1.0.5"}}}
 
   :test {:extra-paths ["test"]
          :extra-deps  {io.github.cognitect-labs/test-runner
@@ -13,7 +14,7 @@
                        io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                        io.github.hive-agi/hive-schemas {:mvn/version "0.1.33"}
                        org.clojure/data.json {:mvn/version "2.5.2"}
-                       io.github.hive-agi/hive-spi {:mvn/version "1.1.0"}
+                       io.github.hive-agi/hive-spi {:mvn/version "1.1.1"}
                        io.github.hive-agi/hive-addon {:mvn/version "1.0.5"}}
          :main-opts ["-m" "cognitect.test-runner" "-e" ":integration"]
          :exec-fn cognitect.test-runner.api/test}
@@ -26,7 +27,7 @@
                               io.github.hive-agi/hive-test {:mvn/version "0.4.5"}
                               io.github.hive-agi/hive-schemas {:mvn/version "0.1.33"}
                               org.clojure/data.json {:mvn/version "2.5.2"}
-                              io.github.hive-agi/hive-spi {:mvn/version "1.1.0"}
+                              io.github.hive-agi/hive-spi {:mvn/version "1.1.1"}
                               io.github.hive-agi/hive-addon {:mvn/version "1.0.5"}}
                 :main-opts ["-m" "cognitect.test-runner" "-i" ":integration"]}
 
