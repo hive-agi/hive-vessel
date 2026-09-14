@@ -42,7 +42,27 @@ function! s:panel_buffer(id) abort
   return l:bnr
 endfunction
 
+" Neovim has no text properties; extmarks in one namespace paint the same
+" faces (cleared and re-set on every show_panel).
+function! s:highlight_nvim(bnr, lines) abort
+  let l:ns = nvim_create_namespace('hive_vessel')
+  call nvim_buf_clear_namespace(a:bnr, l:ns, 0, -1)
+  let l:row = 0
+  for l:line in a:lines
+    let l:target = get(g:hive_vessel_faces, l:line.face, '')
+    if l:target !=# '' && strlen(l:line.text) > 0
+      call nvim_buf_set_extmark(a:bnr, l:ns, l:row, 0,
+            \ {'end_col': strlen(l:line.text), 'hl_group': l:target})
+    endif
+    let l:row += 1
+  endfor
+endfunction
+
 function! s:highlight(bnr, lines) abort
+  if has('nvim')
+    call s:highlight_nvim(a:bnr, a:lines)
+    return
+  endif
   if !exists('*prop_add')
     return
   endif

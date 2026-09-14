@@ -4,4 +4,4 @@
  :builds
  {:test {:target :node-test
          :output-to "target/cljs/node-tests.js"
-         :ns-regexp "^hive-vessel\\.(wire|dispatch|plan|rule|doc|parity|dialect\\.(text|json|vim|elisp)|editor-wire\\.(codec|session))-test$"}}}
+         :ns-regexp "^hive-vessel\\.(wire|dispatch|plan|rule|doc|parity|dialect\\.(text|json|vim|nvim|elisp)|editor-wire\\.(codec|session))-test$"}}}

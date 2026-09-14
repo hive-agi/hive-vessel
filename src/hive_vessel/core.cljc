@@ -20,13 +20,14 @@
             [hive-vessel.dialect.vim :as vim]
             [hive-vessel.dispatch :as dispatch]
             [hive-vessel.plan :as plan]
-            [hive-vessel.rule :as rule]))
+            [hive-vessel.rule :as rule]
+            [hive-vessel.dialect.nvim :as nvim]))
 
 ;; SPDX-License-Identifier: MIT
 
 (def standard-translators
   "Lowerings of every standard primitive for every standard dialect."
-  (vec (concat elisp/translators vim/translators json/translators text/translators)))
+  (vec (concat elisp/translators vim/translators nvim/translators json/translators text/translators)))
 
 (defn standard-registry
   "A registry with the standard dialects plus EXTRA translator collections."
@@ -38,6 +39,7 @@
    vessel adds :vessel/execute! and any :vessel/features it advertises."
   {:emacs  {:vessel/id :emacs  :vessel/dialect :elisp}
    :vim    {:vessel/id :vim    :vessel/dialect :vim-channel}
+   :neovim {:vessel/id :neovim :vessel/dialect :nvim-rpc}
    :vscode {:vessel/id :vscode :vessel/dialect :json}
    :web    {:vessel/id :web    :vessel/dialect :json}
    :tmux   {:vessel/id :tmux   :vessel/dialect :text}})

@@ -84,6 +84,17 @@
   "True iff EXTRACT reads EXPECTED out of OP's payload on every reference
    target; an :elisp payload must contain LITERALS in order instead."
   [op extract expected literals]
+
+(defn- nvim-call
+  "An :nvim-rpc payload's [f args] framed as the :vim-channel command would
+   be: both dialects call the same autoload, so the Vim extractors read it."
+  [{:nvim/keys [params]}]
+  (let [[f args] params] ["call" f args]))
+(defmethod panel-texts :nvim-rpc [_ p] (panel-texts :vim-channel (nvim-call p)))
+(defmethod notify-message :nvim-rpc [_ p] (notify-message :vim-channel (nvim-call p)))
+(defmethod panel-id :nvim-rpc [_ p] (panel-id :vim-channel (nvim-call p)))
+(defmethod open-location :nvim-rpc [_ p] (open-location :vim-channel (nvim-call p)))
+(defmethod terminal-keys :nvim-rpc [_ p] (terminal-keys :vim-channel (nvim-call p)))
   (every? (fn [{:vessel/keys [dialect] :as target}]
             (let [p (payload target op)
                   got (extract dialect p)]

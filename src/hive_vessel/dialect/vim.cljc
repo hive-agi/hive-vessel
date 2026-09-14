@@ -34,7 +34,11 @@
 
 (defn call [f args] (native (call-payload f args)))
 
-(defn- line->json [{:keys [text face file line]}]
+(defn line->json
+  "A rendered line as the JSON object the bundled autoload paints: text, face
+   and, for a link, the file and line to visit. Shared with the :nvim-rpc
+   dialect, which calls the same autoload."
+  [{:keys [text face file line]}]
   (cond-> {"text" text "face" (name face)}
     file (assoc "file" file)
     line (assoc "line" line)))

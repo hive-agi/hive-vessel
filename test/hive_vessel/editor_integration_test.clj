@@ -173,6 +173,56 @@
     (is (not (str/includes? @raw "New DIRECTORY")) @raw)
     (is (= (expected-buffer sample-doc) (slurp out)))))
 
+(def nvim-binary
+  "Neovim on PATH, else the tarball the carto-flow-nvim tests fetched."
+  (let [cached (io/file (System/getProperty "user.home") ".cache" "hive-carto-flow-nvim" "nvim-0.12.5" "bin" "nvim")]
+    (if (.canExecute cached) (.getPath cached) "nvim")))
+
+(defn- nvim-exec-payload
+  "Execute one :nvim-rpc payload the way an rpc peer would (the API method
+   applied to its params) in a headless Neovim loading the bundled autoload,
+   then write panel `t`'s lines and its extmark count to files."
+  [{:nvim/keys [method params]}]
+  (let [in (temp-file ".json" (wire/write-json params))
+        out (File/createTempFile "hive-vessel" ".out")
+        marks (File/createTempFile "hive-vessel" ".marks")
+        errs (File/createTempFile "hive-vessel" ".err")
+        script (temp-file ".vim"
+                          (str "set nocompatible\n"
+                               "let &rtp = " (wire/write-json vim-rtp) " . ',' . &rtp\n"
+                               "let g:hive_vessel_headless = 1\n"
+                               "let p = json_decode(join(readfile(" (wire/write-json (.getPath in)) "), \"\\n\"))\n"
+                               "try\n"
+                               "  call " method "(p[0], p[1])\n"
+                               "catch\n"
+                               "  call writefile([v:exception, v:throwpoint], " (wire/write-json (.getPath errs)) ")\n"
+                               "endtry\n"
+                               "call writefile(hive_vessel#panel_lines('t'), " (wire/write-json (.getPath out)) ")\n"
+                               "call writefile([string(len(nvim_buf_get_extmarks(bufnr('hive://t'), nvim_create_namespace('hive_vessel'), 0, -1, {})))], " (wire/write-json (.getPath marks)) ")\n"
+                               "qall!\n"))
+        r (sh nvim-binary "--headless" "-u" "NONE" "-i" "NONE" "-n" "-S" (.getPath script))]
+    (doseq [f [out marks errs]] (.deleteOnExit f))
+    (assoc r
+           :text (slurp out)
+           :marks (parse-long (str/trim (slurp marks)))
+           :vim-error (not-empty (slurp errs)))))
+
+(defn- highlighted-lines
+  "How many rendered lines of DOC carry a mapped face on non-empty text."
+  [doc]
+  (count (filter #(and (not= :plain (:face %)) (seq (:text %))) (d/render-lines doc))))
+
+(deftest ^:integration nvim-paints-exactly-the-rendered-lines-and-highlights-them
+  (doseq [doc (cons sample-doc (generated-docs 8))]
+    (let [payload (get-in (v/plan (v/standard-registry) (:neovim v/reference-targets)
+                                  {:op :ui/show-panel :panel/id "t" :doc doc})
+                          [:ok :plan/ops 0 :native/payload])
+          {:keys [exit err text marks vim-error]} (nvim-exec-payload payload)]
+      (is (nil? vim-error) (str vim-error (pr-str doc)))
+      (is (zero? exit) err)
+      (is (= (expected-buffer doc) text) (pr-str doc))
+      (is (= (highlighted-lines doc) marks) (pr-str doc)))))
+
 (deftest ^:integration vim-decodes-write-json-losslessly
   (let [data {"s" "q\"b\\n\nt\t\u0001ü" "n" [1 -2 3.5 nil true false] "m" {"k/x" []}}
         in (temp-file ".json" (wire/write-json data))

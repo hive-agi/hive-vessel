@@ -65,6 +65,7 @@ every character-cell vessel paints those same lines.
 |----------------|-----------------------------|------------------------------------------|--------------------|
 | `:elisp`       | Emacs                       | self-contained Elisp source              | `:elisp/call`      |
 | `:vim-channel` | Vim 8.2+/9                  | channel command `["call" fn args]`       | `:vim/call`, `:vim/ex` |
+| `:nvim-rpc`    | Neovim                      | API call `{:nvim/method m :nvim/params p}` (msgpack-rpc framed by the executor); the same autoload paints | `:nvim/call`, `:nvim/lua`, `:nvim/command` |
 | `:json`        | VS Code, web harnesses      | JSON-able message, doc + rendered lines  | `:json/event`      |
 | `:text`        | tmux, CLI, logs             | `{:text/lines [...]}`                    | none               |
 
@@ -164,7 +165,7 @@ One plugin, `resources/hive-vessel/vim`, serves both directions (Vim 9,
   host:port` (manual fallback: a raw channel, for the `vim-channel` executor),
   `:HiveVesselDisconnect`, `:HiveVesselStatus`, `:HiveVesselShowTerminal`,
   and `g:HiveOp`.
-- `autoload/hive_vessel.vim`: what the `:vim-channel` dialect calls to paint
+- `autoload/hive_vessel.vim`: what the `:vim-channel` and `:nvim-rpc` dialects call to paint
   panels, notify, open files and drive terminals.
 - `autoload/hive_vessel/ops.vim`: every op of the wire vocabulary.
 - `autoload/hive_vessel/wire.vim`: discovery, handshake, reconnection, events.
