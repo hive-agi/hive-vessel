@@ -28,28 +28,30 @@
   (is (seq faces))
   (doseq [[nm palette] {"face-sgr" a/face-sgr "face-sgr-256" a/face-sgr-256}]
     (is (= (set faces) (set (keys palette))) nm))
-  (testing "the default palette stays basic, so an in-band span costs 3.0 not 5.0"
+  (testing "face-sgr stays basic, so it remains the option for a 16-colour terminal"
     (is (every? #(not (str/includes? (str %) "38;5;")) (vals a/face-sgr))))
   (testing "the 256 palette is actually extended, or it is not worth its name"
     (is (every? #(str/includes? (str %) "38;5;")
-                (remove nil? (vals a/face-sgr-256))))))
+                (remove nil? (vals a/face-sgr-256)))))
+  (testing "the default is the wide palette: legibility wins at O(1) spans"
+    (is (= a/face-sgr-256 a/*palette*))))
 
 (deftest the-palette-is-read-per-call
   ;; A seam, not Capture-by-Var: binding must change what an EXISTING caller
   ;; paints, with no palette threaded through it.
   (let [line {:text "ok" :face :success}]
-    (is (= 3.0 (a/estimated-tokens (a/paint-line line))))
-    (binding [a/*palette* a/face-sgr-256]
-      (is (= 5.0 (a/estimated-tokens (a/paint-line line))))
+    (is (= 5.0 (a/estimated-tokens (a/paint-line line))))
+    (binding [a/*palette* a/face-sgr]
+      (is (= 3.0 (a/estimated-tokens (a/paint-line line))))
       (is (= "ok" (a/strip-ansi (a/paint-line line)))))
-    (is (= 3.0 (a/estimated-tokens (a/paint-line line))))))
+    (is (= 5.0 (a/estimated-tokens (a/paint-line line))))))
 
 (hst/deftrifecta-from-schema paint-line
   hive-vessel.render.ansi/paint-line
   {:in s/RenderedLine
    :out :string
    :rel (fn [{:keys [text face]} painted]
-          (let [sgr (get a/face-sgr face)]
+          (let [sgr (get a/*palette* face)]
             (and (= (a/strip-ansi painted) (a/sanitize text))
                  (= (if sgr 1 0) (a/span-count painted))
                  (if sgr (str/ends-with? painted a/sgr-reset) true))))
@@ -83,13 +85,23 @@
            (>= 1 (a/span-count painted))))))
 
 (deftest span-cost-is-the-measured-constant
-  ;; Encodes memory 20260916152640-711a6f05 so a palette change that moves the
-  ;; bill has to move this number too.
-  (let [lines (mapv (fn [i] {:text (str "line " i) :face :success}) (range 10))
-        painted (mapv a/paint-line lines)]
-    (is (= 10 (reduce + (map a/span-count painted))))
-    (is (= 30.0 (reduce + (map a/estimated-tokens painted))))
-    (is (= 5.0 (a/estimated-tokens (str a/csi "38;5;208m" "x" a/sgr-reset))))))
+  ;; Encodes memory 20260916152640-711a6f05. Pinned on `paint` directly so it
+  ;; measures the CONSTANT and not whichever palette happens to be default.
+  (testing "the two prices"
+    (is (= 3.0 (a/estimated-tokens (a/paint "32" "x"))))
+    (is (= 5.0 (a/estimated-tokens (a/paint "38;5;208" "x"))))
+    (is (= 1 (a/span-count (a/paint "32" "x"))))
+    (is (zero? (a/span-count "no spans here"))))
+  (testing "cost is linear in SPANS, not in characters"
+    (let [short-line (a/paint "32" "x")
+          long-line (a/paint "32" (apply str (repeat 500 "x")))]
+      (is (= (a/estimated-tokens short-line) (a/estimated-tokens long-line)))))
+  (testing "an O(1) marker set stays within a small budget on either palette"
+    (doseq [palette [a/face-sgr a/face-sgr-256]]
+      (binding [a/*palette* palette]
+        (let [markers (map #(a/mark % (name %)) [:success :warn :error :info :muted])]
+          (is (= 5 (reduce + (map a/span-count markers))))
+          (is (<= (reduce + (map a/estimated-tokens markers)) 25.0)))))))
 
 (deftest an-unknown-face-paints-nothing
   (is (= "plain" (a/mark :no-such-face "plain")))

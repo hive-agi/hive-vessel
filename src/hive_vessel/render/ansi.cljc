@@ -58,10 +58,11 @@
    :link "4;38;5;81"})
 
 (def ^:dynamic *palette*
-  "The palette `paint-line` reads, per call. Bind it to widen or narrow the
-   colour space for one surface without threading a palette through callers
-   that have no opinion about it."
-  face-sgr)
+  "The palette `paint-line` reads, per call. Defaults to the wide one: the
+   cost difference only bites at high span counts, and an in-band scheme is
+   only sane at O(1) spans anyway, where it is a few tokens. Bind `face-sgr`
+   for a terminal without 256-colour support."
+  face-sgr-256)
 
 (def span-cost
   "Tokens one SGR span costs in Claude's tokenizer, by palette. Measured;
