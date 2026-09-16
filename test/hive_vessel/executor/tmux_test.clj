@@ -11,7 +11,8 @@
             [hive-test.mutation :as mut]
             [hive-vessel.core :as v]
             [hive-vessel.doc :as d]
-            [hive-vessel.executor.tmux :as tmux])
+            [hive-vessel.executor.tmux :as tmux]
+            [hive-vessel.render.ansi :as ansi])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
@@ -135,3 +136,27 @@
   (is (= "cat '/p/x.txt'; exec sleep infinity" (tmux/viewer-command "/p/x.txt")))
   (is (= "vi +3 '/tmp/a b.clj'" (tmux/editor-command "vi" {:file "/tmp/a b.clj" :line 3})))
   (is (= "vi '/tmp/a.clj'" (tmux/editor-command "vi" {:file "/tmp/a.clj"}))))
+
+(deftest colour-is-opt-in-and-reaches-the-pane-through-the-real-plan
+  ;; Faces must survive the whole path: doc -> :text dialect -> :text/face-lines
+  ;; -> executor -> the file the pane cats. Painting costs the model nothing
+  ;; because the model never reads this file.
+  (let [reg (v/standard-registry)
+        pane (fn [colour?]
+               (let [dir (temp-dir)
+                     [run! _] (recording-port #{})
+                     target (tmux/target {:run! run! :dir dir :session "s" :colour? colour?})]
+                 (v/dispatch! reg target {:op :ui/show-panel :panel/id "flow" :doc doc-a})
+                 (slurp (io/file dir "flow.txt"))))
+        rendered (d/render-lines doc-a)
+        plain (str (str/join "\n" (map :text rendered)) "\n")]
+    (testing "the default executor is byte-identical to the uncoloured one"
+      (is (= plain (pane false)))
+      (is (zero? (ansi/span-count (pane false)))))
+    (testing "colour? paints, and strips back to exactly the same text"
+      (let [painted (pane true)]
+        (is (= plain (ansi/strip-ansi painted)))
+        ;; expected span count comes from the doc's own faces through the
+        ;; palette, never from a literal that could drift with either
+        (is (= (count (remove #(nil? (get ansi/face-sgr (:face %))) rendered))
+               (ansi/span-count painted)))))))

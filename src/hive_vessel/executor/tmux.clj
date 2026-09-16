@@ -14,7 +14,8 @@
    :out s :err s})`, so the executor is testable without a server; the
    default runs `tmux [-L socket] argv...`."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [hive-vessel.render.ansi :as ansi])
   (:import (java.io File)
            (java.util.concurrent TimeUnit)))
 
@@ -120,11 +121,14 @@
 
 (defn execute-text!
   "Run one :text PAYLOAD on the executor context EX. Returns the window id
-   a panel or editor landed in, or true."
-  [ex {:text/keys [panel close? terminal keys lines open]}]
+   a panel or editor landed in, or true. A panel's lines are painted from
+   :text/face-lines when EX paints and the payload carries them."
+  [ex {:text/keys [panel close? terminal keys lines open face-lines] :as payload}]
   (cond
     close? (close-panel! ex panel)
-    panel (show-panel! ex panel lines)
+    panel (show-panel! ex panel (if (and (:colour? ex) face-lines)
+                                  (:text/lines (ansi/colourize payload true))
+                                  lines))
     terminal (send-keys! ex terminal (or keys (str/join "\n" lines)))
     open (open-file! ex open)
     :else (notify! ex lines)))
@@ -136,14 +140,16 @@
      :tmux        binary (default \"tmux\")
      :dir         panel files (default <tmpdir>/hive-vessel-tmux)
      :editor      command for open-file (default $EDITOR, else vi)
+     :colour?     paint panel lines from :text/face-lines (default false)
      :run!        the tmux port (default run-tmux! over the binary)
    The returned fn carries its window map under ::state in its metadata."
   ([] (executor {}))
-  ([{:keys [session dir editor run!] :as opts}]
+  ([{:keys [session dir editor run! colour?] :as opts}]
    (let [state (atom {:windows {}})
          ex {:session (or session "hive")
              :dir (or dir (str (System/getProperty "java.io.tmpdir") "/hive-vessel-tmux"))
              :editor (or editor (System/getenv "EDITOR") "vi")
+             :colour? (boolean colour?)
              :run! (or run! #(run-tmux! opts %))
              :state state}]
      (with-meta
