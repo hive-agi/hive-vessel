@@ -122,12 +122,14 @@
 (defn execute-text!
   "Run one :text PAYLOAD on the executor context EX. Returns the window id
    a panel or editor landed in, or true. A panel's lines are painted from
-   :text/face-lines when EX paints and the payload carries them."
+   :text/face-lines when EX paints and the payload carries them, through
+   EX's palette."
   [ex {:text/keys [panel close? terminal keys lines open face-lines] :as payload}]
   (cond
     close? (close-panel! ex panel)
     panel (show-panel! ex panel (if (and (:colour? ex) face-lines)
-                                  (:text/lines (ansi/colourize payload true))
+                                  (binding [ansi/*palette* (:palette ex)]
+                                    (:text/lines (ansi/colourize payload true)))
                                   lines))
     terminal (send-keys! ex terminal (or keys (str/join "\n" lines)))
     open (open-file! ex open)
@@ -141,15 +143,18 @@
      :dir         panel files (default <tmpdir>/hive-vessel-tmux)
      :editor      command for open-file (default $EDITOR, else vi)
      :colour?     paint panel lines from :text/face-lines (default false)
+     :palette     face to SGR map (default ansi/face-sgr-256, since a pane
+                  is not read by a model and the wider palette is free there)
      :run!        the tmux port (default run-tmux! over the binary)
    The returned fn carries its window map under ::state in its metadata."
   ([] (executor {}))
-  ([{:keys [session dir editor run! colour?] :as opts}]
+  ([{:keys [session dir editor run! colour? palette] :as opts}]
    (let [state (atom {:windows {}})
          ex {:session (or session "hive")
              :dir (or dir (str (System/getProperty "java.io.tmpdir") "/hive-vessel-tmux"))
              :editor (or editor (System/getenv "EDITOR") "vi")
              :colour? (boolean colour?)
+             :palette (or palette ansi/face-sgr-256)
              :run! (or run! #(run-tmux! opts %))
              :state state}]
      (with-meta

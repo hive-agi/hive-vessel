@@ -5,7 +5,7 @@
    against the Face SCHEMA rather than against its own keys, so a face added to
    the enum cannot pass by being absent from both sides."
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
@@ -22,9 +22,27 @@
 
 (deftest every-face-in-the-schema-has-a-palette-entry
   ;; The universe is the enum, not (keys face-sgr): a face missing from both
-  ;; would satisfy a self-derived comparison vacuously.
-  (is (= (set faces) (set (keys a/face-sgr))))
-  (is (seq faces)))
+  ;; would satisfy a self-derived comparison vacuously. Every shipped palette
+  ;; is held to it, so adding a face breaks all of them at once rather than
+  ;; leaving one silently unpainted.
+  (is (seq faces))
+  (doseq [[nm palette] {"face-sgr" a/face-sgr "face-sgr-256" a/face-sgr-256}]
+    (is (= (set faces) (set (keys palette))) nm))
+  (testing "the default palette stays basic, so an in-band span costs 3.0 not 5.0"
+    (is (every? #(not (str/includes? (str %) "38;5;")) (vals a/face-sgr))))
+  (testing "the 256 palette is actually extended, or it is not worth its name"
+    (is (every? #(str/includes? (str %) "38;5;")
+                (remove nil? (vals a/face-sgr-256))))))
+
+(deftest the-palette-is-read-per-call
+  ;; A seam, not Capture-by-Var: binding must change what an EXISTING caller
+  ;; paints, with no palette threaded through it.
+  (let [line {:text "ok" :face :success}]
+    (is (= 3.0 (a/estimated-tokens (a/paint-line line))))
+    (binding [a/*palette* a/face-sgr-256]
+      (is (= 5.0 (a/estimated-tokens (a/paint-line line))))
+      (is (= "ok" (a/strip-ansi (a/paint-line line)))))
+    (is (= 3.0 (a/estimated-tokens (a/paint-line line))))))
 
 (hst/deftrifecta-from-schema paint-line
   hive-vessel.render.ansi/paint-line

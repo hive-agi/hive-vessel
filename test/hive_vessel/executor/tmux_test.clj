@@ -140,23 +140,30 @@
 (deftest colour-is-opt-in-and-reaches-the-pane-through-the-real-plan
   ;; Faces must survive the whole path: doc -> :text dialect -> :text/face-lines
   ;; -> executor -> the file the pane cats. Painting costs the model nothing
-  ;; because the model never reads this file.
+  ;; because the model never reads this file, which is why the pane defaults to
+  ;; the wider 256-colour palette.
   (let [reg (v/standard-registry)
-        pane (fn [colour?]
+        pane (fn [opts]
                (let [dir (temp-dir)
                      [run! _] (recording-port #{})
-                     target (tmux/target {:run! run! :dir dir :session "s" :colour? colour?})]
+                     target (tmux/target (merge {:run! run! :dir dir :session "s"} opts))]
                  (v/dispatch! reg target {:op :ui/show-panel :panel/id "flow" :doc doc-a})
                  (slurp (io/file dir "flow.txt"))))
         rendered (d/render-lines doc-a)
-        plain (str (str/join "\n" (map :text rendered)) "\n")]
+        plain (str (str/join "\n" (map :text rendered)) "\n")
+        spans-for (fn [palette] (count (remove #(nil? (get palette (:face %))) rendered)))]
     (testing "the default executor is byte-identical to the uncoloured one"
-      (is (= plain (pane false)))
-      (is (zero? (ansi/span-count (pane false)))))
+      (is (= plain (pane {:colour? false})))
+      (is (zero? (ansi/span-count (pane {:colour? false})))))
     (testing "colour? paints, and strips back to exactly the same text"
-      (let [painted (pane true)]
+      (let [painted (pane {:colour? true})]
         (is (= plain (ansi/strip-ansi painted)))
         ;; expected span count comes from the doc's own faces through the
         ;; palette, never from a literal that could drift with either
-        (is (= (count (remove #(nil? (get ansi/face-sgr (:face %))) rendered))
-               (ansi/span-count painted)))))))
+        (is (= (spans-for ansi/face-sgr-256) (ansi/span-count painted)))
+        (is (pos? (ansi/span-count painted)))))
+    (testing "a pane defaults to the 256 palette, and an explicit palette wins"
+      (is (str/includes? (pane {:colour? true}) "38;5;"))
+      (is (not (str/includes? (pane {:colour? true :palette ansi/face-sgr}) "38;5;")))
+      (is (= (spans-for ansi/face-sgr)
+             (ansi/span-count (pane {:colour? true :palette ansi/face-sgr})))))))

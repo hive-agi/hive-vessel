@@ -21,20 +21,47 @@
   [:re #"^[0-9;]+$"])
 
 (def face-sgr
-  "SGR parameters per hive-vessel face. nil paints nothing."
-  {:title "1"
-   :heading "1"
+  "SGR parameters per hive-vessel face, bright 16-colour. nil paints nothing.
+   Every entry stays a basic code, so a span costs the 3.0 tokens in
+   `span-cost`, not the 5.0 an extended colour costs."
+  {:title "1;95"
+   :heading "1;96"
    :plain nil
-   :muted "2"
-   :info "34"
-   :success "32"
-   :warn "33"
-   :error "1;31"
+   :muted "90"
+   :info "94"
+   :success "92"
+   :warn "93"
+   :error "1;91"
    :added "32"
    :removed "31"
    :hunk "36"
-   :code nil
-   :link "4"})
+   :code "37"
+   :link "4;94"})
+
+(def face-sgr-256
+  "SGR parameters per face, 256-colour. Costs the 5.0 tokens in `span-cost`
+   per span, so it is for a surface the model does not read: a tmux pane, an
+   editor buffer, a log. In a vessel the paint never enters a token stream at
+   all, which is what makes the wider palette free there."
+  {:title "1;38;5;213"
+   :heading "1;38;5;117"
+   :plain nil
+   :muted "38;5;245"
+   :info "38;5;75"
+   :success "38;5;114"
+   :warn "38;5;221"
+   :error "1;38;5;203"
+   :added "38;5;114"
+   :removed "38;5;203"
+   :hunk "38;5;146"
+   :code "38;5;180"
+   :link "4;38;5;81"})
+
+(def ^:dynamic *palette*
+  "The palette `paint-line` reads, per call. Bind it to widen or narrow the
+   colour space for one surface without threading a palette through callers
+   that have no opinion about it."
+  face-sgr)
 
 (def span-cost
   "Tokens one SGR span costs in Claude's tokenizer, by palette. Measured;
@@ -59,9 +86,10 @@
 (m/=> paint [:=> [:cat [:maybe Sgr] :string] :string])
 
 (defn paint-line
-  "A rendered line as terminal text: sanitized, painted by its face."
+  "A rendered line as terminal text: sanitized, painted by its face through
+   the palette bound at call time."
   [{:keys [text face]}]
-  (paint (get face-sgr face) (sanitize text)))
+  (paint (get *palette* face) (sanitize text)))
 
 (m/=> paint-line [:=> [:cat s/RenderedLine] :string])
 
