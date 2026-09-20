@@ -1,21 +1,21 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.12.6"}
         metosin/malli {:mvn/version "0.20.1"}
-        io.github.hive-agi/hive-spi {:mvn/version "1.2.0"}}
+        io.github.hive-agi/hive-spi {:mvn/version "1.3.0"}}
 
  :aliases
  {:dev  {:extra-paths ["dev" "test"]
-         :extra-deps {org.clojure/data.json {:mvn/version "2.5.2"} io.github.hive-agi/hive-spi {:mvn/version "1.2.0"} io.github.hive-agi/hive-addon {:mvn/version "1.0.13"}}}
+         :extra-deps {org.clojure/data.json {:mvn/version "2.5.2"} io.github.hive-agi/hive-spi {:mvn/version "1.3.0"} io.github.hive-agi/hive-addon {:mvn/version "1.0.14"}}}
 
   :test {:extra-paths ["test"]
          :extra-deps  {io.github.cognitect-labs/test-runner
                        {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                        org.clojure/test.check {:mvn/version "1.1.3"}
-                       io.github.hive-agi/hive-test {:mvn/version "0.4.8"}
-                       io.github.hive-agi/hive-schemas {:mvn/version "0.1.36"}
+                       io.github.hive-agi/hive-test {:mvn/version "0.4.9"}
+                       io.github.hive-agi/hive-schemas {:mvn/version "0.1.37"}
                        org.clojure/data.json {:mvn/version "2.5.2"}
-                       io.github.hive-agi/hive-spi {:mvn/version "1.2.0"}
-                       io.github.hive-agi/hive-addon {:mvn/version "1.0.13"}}
+                       io.github.hive-agi/hive-spi {:mvn/version "1.3.0"}
+                       io.github.hive-agi/hive-addon {:mvn/version "1.0.14"}}
          :main-opts ["-m" "cognitect.test-runner" "-e" ":integration"]
          :exec-fn cognitect.test-runner.api/test}
 
@@ -24,13 +24,13 @@
                 :extra-deps  {io.github.cognitect-labs/test-runner
                               {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                               org.clojure/test.check {:mvn/version "1.1.3"}
-                              io.github.hive-agi/hive-test {:mvn/version "0.4.8"}
-                              io.github.hive-agi/hive-schemas {:mvn/version "0.1.36"}
+                              io.github.hive-agi/hive-test {:mvn/version "0.4.9"}
+                              io.github.hive-agi/hive-schemas {:mvn/version "0.1.37"}
                               org.clojure/data.json {:mvn/version "2.5.2"}
-                              io.github.hive-agi/hive-spi {:mvn/version "1.2.0"}
-                              io.github.hive-agi/hive-addon {:mvn/version "1.0.13"}}
+                              io.github.hive-agi/hive-spi {:mvn/version "1.3.0"}
+                              io.github.hive-agi/hive-addon {:mvn/version "1.0.14"}}
                 :main-opts ["-m" "cognitect.test-runner" "-i" ":integration"]}
 
-  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.21"}}
+  :build {:deps {io.github.hive-agi/hive-build {:mvn/version "0.1.22"}}
           :ns-default hive-build.api}
-  :cljs {:extra-paths ["test"] :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.1"} org.clojure/test.check {:mvn/version "1.1.3"} io.github.hive-agi/hive-test {:mvn/version "0.4.8"} io.github.hive-agi/hive-schemas {:mvn/version "0.1.36"}}}}}
+  :cljs {:extra-paths ["test"] :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.1"} org.clojure/test.check {:mvn/version "1.1.3"} io.github.hive-agi/hive-test {:mvn/version "0.4.9"} io.github.hive-agi/hive-schemas {:mvn/version "0.1.37"}}}}}
