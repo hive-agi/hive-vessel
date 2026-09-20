@@ -69,6 +69,20 @@ every character-cell vessel paints those same lines.
 | `:json`        | VS Code, web harnesses      | JSON-able message, doc + rendered lines  | `:json/event`      |
 | `:text`        | tmux, CLI, logs             | `{:text/lines [...]}`                    | none               |
 
+### Repainting a panel is keyed, not unconditional
+
+A live panel is re-sent on every refresh tick, so `:ui/show-panel` must be cheap
+to repeat and must not cost the reader their place. In `:elisp` each panel buffer
+carries a buffer-local `hive-vessel--panel-key` derived from the rendered lines
+(text, face and link target all count). A repaint whose key is unchanged does
+nothing at all. When the key does change, the buffer is rewritten under
+`inhibit-redisplay`, and point, `window-start` and `window-point` are captured
+and restored for every window showing it, so a scrolled-back observer stays where
+they were. A reader parked at `point-max` follows the new end instead, the way a
+log should. `special-mode` is entered only when the buffer is not already in it,
+and `display-buffer` runs only when no window already shows the buffer, so a
+refresh never steals or rearranges windows.
+
 Dialect calls quote their arguments as data (maps become alists in Elisp,
 JSON values in Vim), so an addon can drive its own editor code without
 building source strings.

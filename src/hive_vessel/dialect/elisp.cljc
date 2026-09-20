@@ -133,18 +133,44 @@
       (str "(insert (propertize " (string-literal text) " 'face " f ") \"\\n\")")
       (str "(insert " (string-literal text) " \"\\n\")"))))
 
+(def panel-key-var
+  "Buffer-local Elisp variable holding the key of what a panel buffer shows.
+   A panel is repainted only when its key changes, so an unchanged redraw
+   costs nothing and never disturbs point, scroll or window layout."
+  "hive-vessel--panel-key")
+
+(defn panel-key
+  "A content key for rendered LINES. Two renders with the same key paint the
+   same buffer; text, face and link target all count, so a face-only change
+   still repaints."
+  [lines]
+  (str (count lines) ":" (hash (mapv (juxt :text :face :file :line) lines))))
+
 (defn show-panel-code [{:keys [doc] panel-id :panel/id}]
-  (str "(let ((buf (get-buffer-create " (string-literal (panel-buffer-name panel-id)) ")))"
-       " (require 'diff-mode nil t)"
-       " (with-current-buffer buf"
-       " (special-mode)"
-       " (let ((inhibit-read-only t))"
-       " (erase-buffer) "
-       (str/join " " (map line-form (doc/render-lines doc)))
-       ")"
-       " (goto-char (point-min)))"
-       " (unless noninteractive (display-buffer buf))"
-       " (buffer-name buf))"))
+  (let [lines (doc/render-lines doc)
+        key (panel-key lines)]
+    (str "(let ((buf (get-buffer-create " (string-literal (panel-buffer-name panel-id)) ")))"
+         " (require 'diff-mode nil t)"
+         " (with-current-buffer buf"
+         " (unless (derived-mode-p 'special-mode) (special-mode))"
+         " (unless (and (local-variable-p '" panel-key-var ")"
+         " (equal " (string-literal key) " (symbol-value '" panel-key-var ")))"
+         " (let* ((inhibit-read-only t)"
+         " (inhibit-redisplay t)"
+         " (marks (mapcar (lambda (w) (list w (window-start w) (window-point w)))"
+         " (get-buffer-window-list buf nil t)))"
+         " (opoint (point))"
+         " (tail (and (> (point-max) 1) (>= (point) (point-max)))))"
+         " (erase-buffer) "
+         (str/join " " (map line-form lines))
+         " (set (make-local-variable '" panel-key-var ") " (string-literal key) ")"
+         " (goto-char (if tail (point-max) (min opoint (point-max))))"
+         " (dolist (m marks)"
+         " (when (window-live-p (car m))"
+         " (set-window-start (car m) (min (nth 1 m) (point-max)) t)"
+         " (set-window-point (car m) (if tail (point-max) (min (nth 2 m) (point-max)))))))))"
+         " (unless (or noninteractive (get-buffer-window buf t)) (display-buffer buf))"
+         " (buffer-name buf))")))
 
 (defn notify-code [{:keys [message level]}]
   (case (or level :info)
