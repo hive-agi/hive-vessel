@@ -143,6 +143,68 @@
       (is (zero? exit) err)
       (is (= (expected-buffer doc) text) (pr-str doc)))))
 
+(defn- vim-run
+  "Run BODY in a Vim started with `--clean`, with the repo plugin first on the
+   runtimepath, and answer the lines BODY wrote to the file named by @OUT@.
+
+   `--clean` is load-bearing: a hive plugin installed under ~/.vim/pack ships
+   its own copy of autoload/hive_vessel.vim, and an inherited one answers the
+   call instead of the copy under test."
+  [body]
+  (let [out (File/createTempFile "hive-vessel-repaint" ".out")
+        script (temp-file ".vim"
+                          (str "let &rtp = " (wire/write-json vim-rtp) " . ',' . &rtp\n"
+                               (str/replace body "@OUT@" (str "'" (.getPath out) "'"))
+                               "\nqall!\n"))
+        r (sh "vim" "--clean" "-N" "-i" "NONE" "-n" "-es" "-S" (.getPath script))]
+    (.deleteOnExit out)
+    (assoc r :lines (str/split-lines (slurp out)))))
+
+(deftest ^:integration vim-repaints-only-when-the-panel-changed
+  ;; A live panel is re-sent on every refresh tick. Repainting unconditionally
+  ;; is what the observer experiences as flicker, and it costs them their
+  ;; scroll position twice a second. Vim answers a comparison with the Number
+  ;; 1, so that, not v:true, is what `string()` writes out.
+  (let [{:keys [lines]}
+        (vim-run
+         (str "let s:lines = []\n"
+              "for i in range(1, 60)\n"
+              "  call add(s:lines, {'text': 'line ' . i, 'face': 'muted'})\n"
+              "endfor\n"
+              "let bnr = hive_vessel#show_panel('t', 'T', s:lines)\n"
+              "let win = win_findbuf(bnr)[0]\n"
+              "let t0 = getbufvar(bnr, 'changedtick')\n"
+              "call hive_vessel#show_panel('t', 'T', s:lines)\n"
+              "let noop = getbufvar(bnr, 'changedtick') == t0\n"
+              "call win_execute(win, 'call cursor(30,1)')\n"
+              "call win_execute(win, 'normal! zt')\n"
+              "let s:v = {}\n"
+              "call win_execute(win, 'let s:v = winsaveview()')\n"
+              "let top = s:v.topline\n"
+              "let s:changed = deepcopy(s:lines)\n"
+              "let s:changed[5].text = 'line 6 CHANGED'\n"
+              "call hive_vessel#show_panel('t', 'T', s:changed)\n"
+              "call win_execute(win, 'let s:v = winsaveview()')\n"
+              "call win_execute(win, 'normal! G')\n"
+              "let s:longer = deepcopy(s:changed)\n"
+              "call add(s:longer, {'text': 'line 61', 'face': 'muted'})\n"
+              "call hive_vessel#show_panel('t', 'T', s:longer)\n"
+              "let s:tail = {}\n"
+              "call win_execute(win, 'let s:tail = winsaveview()')\n"
+              "call writefile([string(noop), string(s:v.lnum), string(s:v.topline == top),"
+              " getbufline(bnr, 6)[0], string(s:tail.lnum)], @OUT@)\n"))
+        [noop cursor topline-kept line-6 tail] lines]
+    (is (= "1" noop)
+        "an unchanged render must not touch the buffer at all")
+    (is (= "30" cursor)
+        "a scrolled-back reader keeps their line across a real content change")
+    (is (= "1" topline-kept)
+        "and keeps their scroll position, not only their cursor")
+    (is (= "line 6 CHANGED" line-6)
+        "the repaint that did happen actually updated the content")
+    (is (= "61" tail)
+        "a reader parked at the end follows the new end, the way a log should")))
+
 (deftest ^:integration vim-panel-ids-with-a-slash-are-not-read-as-paths
   ;; Measured 2026-09-13 by the hive-olympus-vim e2e: a panel id like
   ;; olympus/tab-2 named the buffer hive://olympus/tab-2, which Vim announced

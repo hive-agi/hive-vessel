@@ -83,6 +83,19 @@ log should. `special-mode` is entered only when the buffer is not already in it,
 and `display-buffer` runs only when no window already shows the buffer, so a
 refresh never steals or rearranges windows.
 
+The Vim and Neovim autoload follows the same discipline through the one buffer
+variable it already kept: `b:hive_vessel_lines` is the content key, so a render
+equal to the last one returns without touching the buffer (`b:changedtick` does
+not move). When the lines do differ, the cursor and `winsaveview()` of every
+window showing the panel are captured and restored, a window parked at the last
+line follows the new end, and the split is only created when no window shows the
+buffer yet.
+
+Note for anyone running the plugin from a checkout: a hive plugin installed
+under `~/.vim/pack` may ship its own copy of `autoload/hive_vessel.vim`, and an
+installed copy answers the call instead of the one being tested. The integration
+suite starts Vim with `--clean` for exactly that reason.
+
 Dialect calls quote their arguments as data (maps become alists in Elisp,
 JSON values in Vim), so an addon can drive its own editor code without
 building source strings.

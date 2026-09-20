@@ -85,9 +85,68 @@ function! s:highlight(bnr, lines) abort
   endfor
 endfunction
 
+function! s:line_count(bnr) abort
+  let l:info = getbufinfo(a:bnr)
+  return empty(l:info) ? 1 : l:info[0].linecount
+endfunction
+
+" Cursor and scroll of every window showing BNR, plus whether that window was
+" parked at the end: a reader at the bottom of a log follows the new end,
+" everyone else keeps the line they were on.
+function! s:save_views(bnr) abort
+  let l:last = s:line_count(a:bnr)
+  let l:views = []
+  for l:win in win_findbuf(a:bnr)
+    let s:scratch = {}
+    call win_execute(l:win, 'let s:scratch = winsaveview()')
+    let l:info = getwininfo(l:win)
+    call add(l:views, {'win': l:win, 'view': copy(s:scratch),
+          \ 'tail': !empty(l:info) && l:info[0].botline >= l:last})
+  endfor
+  return l:views
+endfunction
+
+function! s:restore_views(bnr, views) abort
+  let l:last = s:line_count(a:bnr)
+  let l:live = win_findbuf(a:bnr)
+  for l:v in a:views
+    if index(l:live, l:v.win) == -1
+      continue
+    endif
+    if l:v.tail
+      call win_execute(l:v.win, 'call cursor(' . l:last . ', 1)')
+      call win_execute(l:v.win, 'normal! zb')
+    else
+      let s:scratch = l:v.view
+      call win_execute(l:v.win, 'call winrestview(s:scratch)')
+    endif
+  endfor
+endfunction
+
+function! s:ensure_window(bnr) abort
+  if bufwinid(a:bnr) != -1 || get(g:, 'hive_vessel_headless', 0)
+    return
+  endif
+  execute 'botright sbuffer ' . a:bnr
+  nnoremap <buffer> <silent> <CR> :call hive_vessel#visit()<CR>
+  wincmd p
+endfunction
+
 " Show LINES ([{text, face, file?, line?}]) in the panel buffer for ID.
+"
+" A live panel is re-sent on every refresh tick, so an unchanged render must
+" cost nothing: repainting would take the reader's cursor and scroll position
+" twice a second. The lines painted last are the content key.
 function! hive_vessel#show_panel(id, title, lines) abort
   let l:bnr = s:panel_buffer(a:id)
+  let l:vars = getbufinfo(l:bnr)[0].variables
+  if has_key(l:vars, 'hive_vessel_lines')
+        \ && get(l:vars, 'hive_vessel_title', '') ==# a:title
+        \ && l:vars.hive_vessel_lines ==# a:lines
+    call s:ensure_window(l:bnr)
+    return l:bnr
+  endif
+  let l:views = s:save_views(l:bnr)
   call setbufvar(l:bnr, '&modifiable', 1)
   silent call deletebufline(l:bnr, 1, '$')
   call setbufline(l:bnr, 1, map(copy(a:lines), 'v:val.text'))
@@ -95,11 +154,8 @@ function! hive_vessel#show_panel(id, title, lines) abort
   call setbufvar(l:bnr, 'hive_vessel_title', a:title)
   call s:highlight(l:bnr, a:lines)
   call setbufvar(l:bnr, '&modifiable', 0)
-  if bufwinid(l:bnr) == -1 && !get(g:, 'hive_vessel_headless', 0)
-    execute 'botright sbuffer ' . l:bnr
-    nnoremap <buffer> <silent> <CR> :call hive_vessel#visit()<CR>
-    wincmd p
-  endif
+  call s:restore_views(l:bnr, l:views)
+  call s:ensure_window(l:bnr)
   return l:bnr
 endfunction
 
