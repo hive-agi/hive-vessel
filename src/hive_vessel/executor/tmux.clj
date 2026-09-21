@@ -76,23 +76,40 @@
     (.mkdirs d)
     (io/file d (str (safe-name panel-id) ".txt"))))
 
-(defn- show-panel! [{:keys [run! session state] :as ex} panel-id lines]
-  (let [f (panel-file ex panel-id)
-        _ (spit f (str (str/join "\n" lines) "\n"))
-        cmd (viewer-command (.getPath f))
+(defn- window-alive?
+  "True iff tmux still knows window WID."
+  [run! wid]
+  (zero? (:exit (run! ["display-message" "-p" "-t" wid "#{window_id}"]))))
+
+(defn- show-panel!
+  "Paint LINES into PANEL-ID's window. Lines equal to the last ones painted
+   into a window that is still alive leave it untouched; the painted record is
+   written only after tmux confirms the respawn or new window."
+  [{:keys [run! session state] :as ex} panel-id lines]
+  (let [body (str (str/join "\n" lines) "\n")
         wid (get-in @state [:windows panel-id])]
-    (if (and wid (zero? (:exit (run! ["respawn-window" "-k" "-t" wid cmd]))))
+    (if (and wid
+             (= body (get-in @state [:painted panel-id]))
+             (window-alive? run! wid))
       wid
-      (let [{:keys [out]} (ok! (run! ["new-window" "-d" "-t" session "-n" (str "hive:" panel-id)
-                                      "-P" "-F" "#{window_id}" cmd])
-                               "new-window")
-            wid (str/trim out)]
-        (swap! state assoc-in [:windows panel-id] wid)
-        wid))))
+      (let [f (panel-file ex panel-id)
+            _ (spit f body)
+            cmd (viewer-command (.getPath f))]
+        (if (and wid (zero? (:exit (run! ["respawn-window" "-k" "-t" wid cmd]))))
+          (do (swap! state assoc-in [:painted panel-id] body)
+              wid)
+          (let [{:keys [out]} (ok! (run! ["new-window" "-d" "-t" session "-n" (str "hive:" panel-id)
+                                          "-P" "-F" "#{window_id}" cmd])
+                                   "new-window")
+                wid (str/trim out)]
+            (swap! state #(-> %
+                              (assoc-in [:windows panel-id] wid)
+                              (assoc-in [:painted panel-id] body)))
+            wid))))))
 
 (defn- close-panel! [{:keys [run! state]} panel-id]
   (when-let [wid (get-in @state [:windows panel-id])]
-    (swap! state update :windows dissoc panel-id)
+    (swap! state #(-> % (update :windows dissoc panel-id) (update :painted dissoc panel-id)))
     (run! ["kill-window" "-t" wid])
     wid))
 
