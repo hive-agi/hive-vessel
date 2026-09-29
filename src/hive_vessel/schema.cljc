@@ -84,7 +84,12 @@
            [:block/type [:= :link]]
            [:text :string]
            [:file NonBlank]
-           [:line {:optional true} [:int {:min 1}]]]]])
+           [:line {:optional true} [:int {:min 1}]]]]
+   [:table [:map [:block/type [:= :table]] [:columns [:vector :string]] [:rows [:vector [:vector :string]]]]]
+   [:tree [:map [:block/type [:= :tree]] [:nodes [:vector [:map [:id :string] [:label {:optional true} :string] [:children {:optional true} [:vector [:map [:id :string] [:label {:optional true} :string]]]]]]]]]
+   [:sparkline [:map [:block/type [:= :sparkline]] [:values [:vector [:or :int :double]]]]]
+   [:gauge [:map [:block/type [:= :gauge]] [:value [:or :int :double]] [:max [:or :int :double]]]]
+   [:dag [:map [:block/type [:= :dag]] [:nodes [:vector [:map [:id :string] [:label {:optional true} :string] [:children {:optional true} [:vector [:map [:id :string] [:label {:optional true} :string]]]]]]] [:edges [:vector [:tuple :string :string]]]]]])
 
 (def Doc
   [:map

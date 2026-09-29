@@ -35,9 +35,17 @@
 (defn show-panel-message
   "The doc AND its rendered lines, so a rich client lays blocks out natively
    while a simple one paints lines."
-  [op]
-  (assoc (message op) "lines" (wire/->json-data (doc/render-lines (:doc op)))))
-(m/=> show-panel-message [:=> [:cat s/ShowPanel] Payload])
+  ([op] (show-panel-message op nil))
+  ([op target]
+   (let [spans? (contains? (or (:vessel/features target) #{}) :spans)
+         width (or (:width op) (:panel/width op) 80)]
+     (assoc (message op) "lines"
+            (wire/->json-data (if spans? (doc/render-span-lines (:doc op) width)
+                                  (doc/render-lines (:doc op))))))))
+
+(m/=> show-panel-message [:function
+                           [:=> [:cat s/ShowPanel] Payload]
+                           [:=> [:cat s/ShowPanel [:maybe :map]] Payload]])
 
 (defn close-panel-message [op] (message op))
 (m/=> close-panel-message [:=> [:cat s/ClosePanel] Payload])
@@ -61,12 +69,12 @@
         t (fn [op f] {:translator/id (keyword "hive-vessel.json" (name op))
                       :translator/op op
                       :translator/when w
-                      :translator/translate (fn [o _] (native (f o)))})]
+                      :translator/translate (fn [o target] (native (f o target)))})]
     ;; Each lowering is reached through its var at call time, never captured.
-    [(t :ui/notify #(notify-message %))
-     (t :ui/show-panel #(show-panel-message %))
-     (t :ui/close-panel #(close-panel-message %))
-     (t :ui/open-file #(open-file-message %))
-     (t :ui/send-to-terminal #(send-to-terminal-message %))
-     (assoc (t :json/event #(event-message %))
+    [(t :ui/notify (fn [o _] (notify-message o)))
+     (t :ui/show-panel show-panel-message)
+     (t :ui/close-panel (fn [o _] (close-panel-message o)))
+     (t :ui/open-file (fn [o _] (open-file-message o)))
+     (t :ui/send-to-terminal (fn [o _] (send-to-terminal-message o)))
+     (assoc (t :json/event (fn [o _] (event-message o)))
             :translator/accepts [:map [:event [:string {:min 1}]]])]))

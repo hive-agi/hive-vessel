@@ -7,6 +7,8 @@
    itself alongside the lines."
   (:require [clojure.string :as str]
             [hive-vessel.schema :as s]
+            [hive-vessel.layout.cells :as cells]
+            [hive-vessel.layout.dag :as dag-layout]
             [malli.core :as m]))
 
 ;; SPDX-License-Identifier: MIT
@@ -139,3 +141,109 @@
   "The rendered lines of DOC joined by newlines."
   [doc]
   (str/join "\n" (map :text (render-lines doc))))
+
+;; Rich span lowering is independent of dialects. Block methods are extension points;
+;; width clipping happens once after lowering, preserving face boundaries.
+(defn table [columns rows] {:block/type :table :columns (vec columns) :rows (mapv vec rows)})
+(defn tree [roots] {:block/type :tree :nodes (vec roots)})
+(defn sparkline [values] {:block/type :sparkline :values (vec values)})
+(defn gauge [value maximum] {:block/type :gauge :value value :max maximum})
+(defn dag [nodes edges] {:block/type :dag :nodes (vec nodes) :edges (vec edges)})
+
+(defn- span [text face] {:text (str text) :face face})
+(defn- row [face & spans] {:face face :spans (vec spans)})
+
+(defmulti block-span-lines
+  "Open block-to-span-line lowering. Methods receive [block width]."
+  (fn [block _width] (:block/type block)))
+
+(defmethod block-span-lines :table [{:keys [columns rows]} width]
+  (let [columns (mapv str columns)
+        rows (mapv #(mapv str %) rows)
+        n (count columns)
+        available (max 1 (- width (* 3 (max 0 (dec n)))))
+        natural (mapv (fn [i] (reduce max 0 (map cells/display-width
+                                               (cons (nth columns i) (map #(get % i "") rows))))) (range n))
+        sizes (loop [sizes (vec (repeat n 0)) left available]
+                (if (or (zero? left) (empty? sizes) (every? true? (map >= sizes natural))) sizes
+                    (let [i (first (sort-by (fn [j] [(if (< (sizes j) (natural j)) (sizes j) 1000000) j]) (range n)))]
+                      (recur (update sizes i inc) (dec left)))))
+        format-row (fn [xs face]
+                     (row face (span (str/join " │ " (map-indexed
+                                                     (fn [i x] (cells/pad (cells/clip x (sizes i)) (sizes i))) xs)) face)))]
+    (if (zero? n) []
+        (into [(format-row columns :heading)] (map #(format-row (mapv (fn [i] (get % i "")) (range n)) :plain) rows)))))
+
+(defmethod block-span-lines :tree [{:keys [nodes]} _]
+  (letfn [(walk [siblings prefix]
+            (mapcat (fn [i {:keys [label id children]}]
+                      (let [last? (= i (dec (count siblings)))
+                            lead (str prefix (if last? "└─ " "├─ "))]
+                        (cons (cond-> (row :plain (span lead :muted) (span (or label id "") :plain))
+                                id (assoc :id (str id)))
+                              (walk (vec children) (str prefix (if last? "   " "│  "))))))
+                    (range (count siblings)) siblings))]
+    (vec (walk (vec nodes) ""))))
+
+(defmethod block-span-lines :diff [block _]
+  (mapv (fn [{:line/keys [kind text] :as line}]
+          (cond-> (row (diff-kind->face kind) (span (str/replace (or text "") #"\r\n|\r|\n" " ")
+                                                     (diff-kind->face kind)))
+            (:id line) (assoc :id (str (:id line))))) (diff-lines block)))
+
+(defmethod block-span-lines :fields [{:keys [fields]} _]
+  (mapv (fn [[k v]] (row :plain (span (str k) :heading) (span " : " :muted) (span (str v) :plain))) fields))
+
+(defmethod block-span-lines :sparkline [{:keys [values]} _]
+  (let [levels ["▁" "▂" "▃" "▄" "▅" "▆" "▇" "█"]
+        hi (reduce max 0 (filter number? values))
+        lo (reduce min 0 (filter number? values))
+        extent (- hi lo)]
+    [(row :info (span (apply str (map (fn [v] (nth levels (if (and (number? v) (pos? extent))
+                                                         (min 7 (int (* 7 (/ (- v lo) extent)))) 0))) values)) :info))]))
+
+(defmethod block-span-lines :gauge [{:keys [value] maximum :max} width]
+  (let [n (max 0 (min 40 (- width 8)))
+        filled (if (and (number? maximum) (pos? maximum) (number? value))
+                 (int (* n (min 1 (max 0 (/ value maximum))))) 0)]
+    [(row :info (span (str "[" (apply str (repeat filled "█"))
+                            (apply str (repeat (- n filled) "░")) "]") :info))]))
+
+(defmethod block-span-lines :dag [{:keys [nodes edges]} width]
+  (dag-layout/rows nodes edges width))
+
+(defmethod block-span-lines :default [block _]
+  (mapv (fn [{:keys [text face]}] (row face (span text face))) (block-lines block)))
+
+(defn- bound-row [line width]
+  (let [[spans _] (reduce (fn [[out remaining] {:keys [text face]}]
+                            (let [part (cells/clip (str/replace (str text) #"\r\n|\r|\n" " ") remaining)]
+                              [(conj out (span part face)) (- remaining (cells/display-width part))]))
+                          [[] (max 0 width)] (:spans line))]
+    (assoc line :spans spans)))
+
+(defn render-span-lines
+  "Render a Doc to width-bounded addressable {:face :id? :spans} rows.
+   Width is display cells, not UTF-16 length; absent width defaults to 80."
+  ([document] (render-span-lines document 80))
+  ([{:doc/keys [title blocks]} width]
+   (mapv #(bound-row % width)
+         (into [(row :title (span title :title))]
+               (mapcat (fn [block]
+                         (let [id (:id block)]
+                           (cons (row :plain (span "" :plain))
+                                 (map-indexed (fn [i line]
+                                                (if (and id (not (:id line)))
+                                                  (assoc line :id (str id ":" i)) line))
+                                              (block-span-lines block width))))) blocks)))))
+
+(defn flatten-span-lines
+  "Convert rich rows back to legacy face-tagged text lines."
+  [lines]
+  (mapv (fn [{:keys [face spans]}] {:face face :text (apply str (map :text spans))}) lines))
+
+;; Text vessels keep using render-lines. Their new blocks flatten the same
+;; span lowering rather than acquiring a second layout implementation.
+(doseq [kind [:table :tree :sparkline :gauge :dag]]
+  (defmethod block-lines kind [block]
+    (flatten-span-lines (block-span-lines block 80))))
