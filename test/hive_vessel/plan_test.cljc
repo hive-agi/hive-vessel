@@ -17,8 +17,16 @@
 
 (def standard (v/standard-registry))
 
+;; Bounded: the unbounded malli generator of s/Primitive builds a rose tree
+;; whose size explodes combinatorially (a :ui/show-panel :doc carries the
+;; whole open Block multi, and rose-tree shrinking fans out across every
+;; dispatch branch). At the test.check sizes this OOMs the suite JVM.
+(def bounded-primitive
+  (gen/fmap (fn [[size seed]] (mg/generate s/Primitive {:size size :seed seed}))
+            (gen/tuple (gen/choose 1 12) gen/int)))
+
 (defspec every-primitive-lowers-for-every-reference-vessel 150
-  (prop/for-all [op (mg/generator s/Primitive)
+  (prop/for-all [op bounded-primitive
                  target (gen/elements (vals v/reference-targets))]
     (let [{:keys [ok error]} (plan/plan standard target op)]
       (and (nil? error)
@@ -28,7 +36,7 @@
            (= [(:op op)] (mapv :op (:plan/trace ok)))))))
 
 (defspec batches-concatenate-in-order 50
-  (prop/for-all [ops (gen/vector (mg/generator s/Primitive) 0 5)]
+  (prop/for-all [ops (gen/vector bounded-primitive 0 5)]
     (let [target (:tmux v/reference-targets)
           one-by-one (mapcat #(get-in (plan/plan standard target %) [:ok :plan/ops]) ops)]
       (= (vec one-by-one) (get-in (plan/plan standard target ops) [:ok :plan/ops])))))
