@@ -127,14 +127,17 @@
 
 (defn client-features
   "The UNION of the parsed `features` sets of every connected client of
-   VESSEL-ID (a string or keyword, compared normalized). The union is the
-   safe projection: a translator that degrades rather than upgrades must
-   treat a feature as present only when EVERY client has it -- the
-   complement. Empty -> #{}."
+   VESSEL-ID (a string or keyword, compared normalized). A client that
+   subscribed without a `vessel` param belongs to the bridge's own vessel:
+   one bridge serves one vessel, and a consumer such as dirge should not have
+   to name itself to be understood. The union is the safe projection: a
+   translator that degrades rather than upgrades must treat a feature as
+   present only when EVERY client has it -- the complement. Empty -> #{}."
   [bridge vessel-id]
   (let [id (some-> vessel-id keyword)]
     (into #{}
-          (comp (filter #(= id (some-> (:vessel/id %) keyword)))
+          (comp (filter #(let [v (some-> (:vessel/id %) keyword)]
+                           (or (nil? v) (= id v))))
                 (mapcat :features))
           (vals (:clients @(:state bridge))))))
 

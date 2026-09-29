@@ -89,6 +89,17 @@
        (is (await #(= 1 (sse/clients b))))
        (is (= #{} (sse/client-features b "dirge")))))))
 
+(deftest a-client-without-vessel-param-belongs-to-the-bridge
+  ;; dirge's real subscription (panel_feed/client.rs) sends token and
+  ;; features only, never `vessel`: it must still be read as the bridge's
+  ;; own vessel, or every feature gate stays closed (found live, 2026-09-29).
+  (bridge-fixture
+   (fn [b]
+     (let [q (subscribe! b "/vessel/events?features=spans,keys,cursor,open-file")]
+       (is (= "retry: 2000" (.poll ^LinkedBlockingQueue q 5 TimeUnit/SECONDS)))
+       (is (await #(= 1 (sse/clients b))))
+       (is (= #{:spans :keys :cursor :open-file} (sse/client-features b "dirge")))))))
+
 (deftest disconnected-clients-drop-their-features
   (bridge-fixture
    (fn [b]
