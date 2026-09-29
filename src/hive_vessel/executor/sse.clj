@@ -16,12 +16,20 @@
 
    Retention: the latest `ui/show-panel` per panel id is replayed to each new
    connection and dropped on `ui/close-panel`, so a client that connects after
-   hive presented something still shows it."
+   hive presented something still shows it.
+
+   Feature handshake: a client may subscribe with
+   `?features=spans,keys,cursor,open-file`; the parsed set is recorded per
+   client and readable through `client-features` (the union across the
+   connected clients of VESSEL-ID -- #{}, the safe subset, when none). The
+   bridge only collects; the :vessel/features of a target is the producer's
+   decision."
   (:require [clojure.string :as str]
+            [hive-vessel.executor.handshake :as handshake]
             [hive-vessel.wire :as wire])
   (:import (com.sun.net.httpserver HttpExchange HttpHandler HttpServer)
-           (java.io IOException OutputStream)
            (java.net InetAddress InetSocketAddress URLDecoder)
+           (java.io IOException InputStream OutputStream)
            (java.nio.charset StandardCharsets)
            (java.util.concurrent ExecutorService Executors ScheduledExecutorService TimeUnit)
 [java.security MessageDigest]))
@@ -117,11 +125,30 @@
     (swap! state update :clients dissoc id)
     (try (.close exchange) (catch Throwable _ nil))))
 
+(defn client-features
+  "The UNION of the parsed `features` sets of every connected client of
+   VESSEL-ID (a string or keyword, compared normalized). The union is the
+   safe projection: a translator that degrades rather than upgrades must
+   treat a feature as present only when EVERY client has it -- the
+   complement. Empty -> #{}."
+  [bridge vessel-id]
+  (let [id (some-> vessel-id keyword)]
+    (into #{}
+          (comp (filter #(= id (some-> (:vessel/id %) keyword)))
+                (mapcat :features))
+          (vals (:clients @(:state bridge))))))
+
 (defn- handle-events [{:keys [state] :as bridge} ^HttpExchange ex]
   (let [origin (header ex "Origin")
         id (str (random-uuid))
-        client {:id id :exchange ex :out (.getResponseBody ex) :lock (Object.)
-                :origin origin}]
+        params (query-params (.getRawQuery (.getRequestURI ex)))
+        client {:id id
+                :exchange ex
+                :out (.getResponseBody ex)
+                :lock (Object.)
+                :origin origin
+                :vessel/id (get params "vessel")
+                :features (handshake/parse-features (get params "features"))}]
     (cors! ex origin)
     (doto (.getResponseHeaders ex)
       (.set "Content-Type" "text/event-stream; charset=utf-8")
@@ -137,7 +164,10 @@
           (write! client (sse-frame (:seq @state) message)))
         (swap! state assoc-in [:clients id] client)
         (catch IOException _ (.close ex))))
-    (when-let [f (:on-connect bridge)] (f {:client/id id :client/origin origin}))))
+    (when-let [f (:on-connect bridge)] (f {:client/id id :client/origin origin}))
+    ;; Refuse the connection when the client goes away; SSE has no other EOF.
+    (try (.close ^InputStream (.getRequestBody ex))
+         (catch Throwable _ nil))))
 
 (defn- handle-reply [{:keys [state on-message]} ^HttpExchange ex]
   (let [origin (header ex "Origin")
