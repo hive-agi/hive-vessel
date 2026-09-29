@@ -210,7 +210,7 @@
                             (apply str (repeat (- n filled) "░")) "]") :info))]))
 
 (defmethod block-span-lines :dag [{:keys [nodes edges]} width]
-  (mapv #(row :plain (span % :plain)) (dag-layout/rows nodes edges (max 1 (- width 8)))))
+  (dag-layout/rows nodes edges width))
 
 (defmethod block-span-lines :default [block _]
   (mapv (fn [{:keys [text face]}] (row face (span text face))) (block-lines block)))

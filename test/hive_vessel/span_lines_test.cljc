@@ -58,3 +58,62 @@
     (let [a (doc/render-span-lines d width)]
       (and (= a (doc/render-span-lines d width))
            (every? #(<= (cells/display-width (content %)) width) a)))))
+
+(defn dag-lines [nodes edges width]
+  (doc/render-span-lines (doc/doc "" (doc/dag nodes edges)) width))
+
+(defn graph-rows [lines] (filter #(or (:cells %) (:id %) (:edges %)) lines))
+
+(deftest sugiyama-examples
+  (testing "input order does not discard an acyclic edge"
+    (let [ns [{:id "b"} {:id "a"}]]
+      (is (= [["a"] ["b"]] (dag/layers ns [["a" "b"]])))
+      (is (= [{:source "a" :target "b" :from "a" :to "b" :reversed? false}]
+             (:arcs (dag/layout ns [["a" "b"]]))))))
+  (testing "diamond and long edge through a dummy"
+    (let [ns (mapv #(hash-map :id %) ["a" "b" "c" "d"])
+          es [["a" "b"] ["a" "c"] ["b" "d"] ["c" "d"] ["a" "d"]]
+          lines (dag-lines ns es 40)]
+      (is (= [["a"] ["b" "c"] ["d"]] (dag/layers ns es)))
+      (is (= 5 (count (mapcat :edges lines))))
+      (is (some :cells lines))
+      (is (some #(re-find #"[▼┼┌┐]" (content %)) lines))
+      (is (some #(= :heading (:face %)) (mapcat :spans lines)))
+      (is (some #(= :muted (:face %)) (mapcat :spans lines)))))
+  (testing "chain has successive layers"
+    (let [ns (mapv #(hash-map :id %) ["a" "b" "c"])]
+      (is (= [["a"] ["b"] ["c"]] (dag/layers ns [["a" "b"] ["b" "c"]])))))
+  (testing "cycle reverses feedback only"
+    (let [ns (mapv #(hash-map :id %) ["a" "b" "c"])
+          es [["a" "b"] ["b" "c"] ["c" "a"]]
+          arcs (:arcs (dag/layout ns es))]
+      (is (= 1 (count (filter :reversed? arcs))))
+      (is (= (set es) (set (map (juxt :source :target) arcs))))))
+  (testing "wide fan-out at 40 columns falls back with all ids and edges"
+    (let [ns (mapv #(hash-map :id (str %)) (range 20))
+          es (mapv #(vector "0" (str %)) (range 1 20))
+          lines (dag-lines ns es 40)]
+      (is (= 20 (count (keep :id lines))))
+      (is (= 19 (count (mapcat :edges lines))))
+      (is (every? #(<= (cells/display-width (content %)) 40) lines)))))
+
+(def generated-graph
+  (gen/let [n (gen/choose 1 12)
+            links (gen/vector (gen/tuple (gen/choose 0 11) (gen/choose 0 11)) 0 32)]
+    (let [ns (mapv #(hash-map :id (str %) :label (str "node" %)) (range n))]
+      [ns (mapv (fn [[a b]] [(str (mod a n)) (str (mod b n))]) links)])))
+
+(defspec graph-edges-layering-width-and-determinism 100
+  (prop/for-all [[ns es] generated-graph width (gen/choose 0 100)]
+    (let [{:keys [layers arcs]} (dag/layout ns es)
+          depths (into {} (mapcat (fn [i layer] (map (fn [id] [id i]) layer)) (range) layers))
+          lines (dag-lines ns es width)
+          rendered (mapcat :edges (graph-rows lines))]
+      (and (= (frequencies es) (frequencies (map (juxt :source :target) arcs)))
+           (every? (fn [{:keys [source target from to reversed?]}]
+                     (and (or (= [source target] [from to]) reversed?)
+                          (or (= from to) (< (depths from) (depths to))))) arcs)
+           (= (frequencies (map (juxt :source :target :reversed?) arcs))
+              (frequencies (map (juxt :source :target :reversed?) rendered)))
+           (every? #(<= (cells/display-width (content %)) width) lines)
+           (= lines (dag-lines ns es width))))))

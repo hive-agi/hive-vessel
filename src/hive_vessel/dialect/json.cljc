@@ -43,6 +43,10 @@
             (wire/->json-data (if spans? (doc/render-span-lines (:doc op) width)
                                   (doc/render-lines (:doc op))))))))
 
+(m/=> show-panel-message [:function
+                           [:=> [:cat s/ShowPanel] Payload]
+                           [:=> [:cat s/ShowPanel [:maybe :map]] Payload]])
+
 (defn close-panel-message [op] (message op))
 (m/=> close-panel-message [:=> [:cat s/ClosePanel] Payload])
 
