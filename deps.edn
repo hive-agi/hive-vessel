@@ -35,4 +35,4 @@
           :ns-default hive-build.api}
   ;; hive-spi 1.4.1 on Clojars is AOT-only (no .cljc), so ClojureScript
   ;; cannot compile it; 1.4.0 is the newest source jar.
-  :cljs {:extra-paths ["test"] :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.3"} org.clojure/test.check {:mvn/version "1.1.3"} io.github.hive-agi/hive-test {:mvn/version "0.4.11"} io.github.hive-agi/hive-schemas {:mvn/version "0.1.39"} io.github.hive-agi/hive-spi {:mvn/version "1.4.2"}}}}}
+  :cljs {:extra-paths ["test"] :extra-deps {thheller/shadow-cljs {:mvn/version "3.5.4"} org.clojure/test.check {:mvn/version "1.1.3"} io.github.hive-agi/hive-test {:mvn/version "0.4.11"} io.github.hive-agi/hive-schemas {:mvn/version "0.1.39"} io.github.hive-agi/hive-spi {:mvn/version "1.4.2"}}}}}
