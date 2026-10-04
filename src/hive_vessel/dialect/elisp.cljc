@@ -139,12 +139,23 @@
    costs nothing and never disturbs point, scroll or window layout."
   "hive-vessel--panel-key")
 
+(defn- stable-hash
+  "A hash of string S that is the same on every runtime: a base-31
+   polynomial over its UTF-16 code units, reduced mod 2^31-1. Every
+   intermediate stays below 2^53, so JVM longs and JS doubles agree."
+  [s]
+  (reduce (fn [h i]
+            (mod (+ (* h 31) #?(:clj (int (.charAt ^String s i)) :cljs (.charCodeAt s i)))
+                 2147483647))
+          7
+          (range (count s))))
+
 (defn panel-key
   "A content key for rendered LINES. Two renders with the same key paint the
    same buffer; text, face and link target all count, so a face-only change
-   still repaints."
+   still repaints. The key is the same whichever runtime computes it."
   [lines]
-  (str (count lines) ":" (hash (mapv (juxt :text :face :file :line) lines))))
+  (str (count lines) ":" (stable-hash (pr-str (mapv (juxt :text :face :file :line) lines)))))
 
 (defn show-panel-code [{:keys [doc] panel-id :panel/id}]
   (let [lines (doc/render-lines doc)
