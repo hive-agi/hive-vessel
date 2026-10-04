@@ -79,6 +79,55 @@
     (is (= ["new-window" "respawn-window" "new-window"] (verbs log)))
     (is (= {"p" "@2"} (tmux/panel-windows (:vessel/execute! target))))))
 
+(deftest an-unchanged-panel-is-not-respawned
+  (let [[run! log] (recording-port #{})
+        target (tmux/target {:run! run! :dir (temp-dir)})
+        reg (v/standard-registry)
+        show! #(v/dispatch! reg target {:op :ui/show-panel :panel/id "p" :doc %})]
+    (show! doc-a)
+    (is (= ["@1"] (get-in (show! doc-a) [:ok :plan/results])))
+    (is (= ["new-window" "display-message"] (verbs log))
+        "equal lines into a live window only probe it, so the reader keeps copy-mode and history")
+    (show! doc-b)
+    (is (= "respawn-window" (first (last @log))) "changed lines repaint")))
+
+(deftest an-unchanged-panel-whose-window-died-is-recreated
+  (let [[run! log] (recording-port #{"display-message" "respawn-window"})
+        target (tmux/target {:run! run! :dir (temp-dir)})
+        reg (v/standard-registry)]
+    (v/dispatch! reg target {:op :ui/show-panel :panel/id "p" :doc doc-a})
+    (is (= ["@2"] (get-in (v/dispatch! reg target {:op :ui/show-panel :panel/id "p" :doc doc-a})
+                          [:ok :plan/results])))
+    (is (= ["new-window" "display-message" "respawn-window" "new-window"] (verbs log)))))
+
+(deftest a-paint-that-failed-is-not-remembered-as-painted
+  (let [down? (atom false)
+        log (atom [])
+        n (atom 0)
+        run! (fn [argv]
+               (swap! log conj argv)
+               (cond
+                 @down? {:exit 1 :out "" :err "no server running"}
+                 (= "new-window" (first argv)) {:exit 0 :out (str "@" (swap! n inc) "\n") :err ""}
+                 :else {:exit 0 :out "" :err ""}))
+        target (tmux/target {:run! run! :dir (temp-dir)})
+        reg (v/standard-registry)
+        show! #(v/dispatch! reg target {:op :ui/show-panel :panel/id % :doc doc-a})]
+    (testing "a first paint while the server is down lands once it is up"
+      (reset! down? true)
+      (is (:error (show! "q")))
+      (reset! down? false)
+      (is (= ["@1"] (get-in (show! "q") [:ok :plan/results])))
+      (is (= "new-window" (first (last @log)))))
+    (testing "a repaint that failed is retried, not skipped as already painted"
+      (v/dispatch! reg target {:op :ui/show-panel :panel/id "q" :doc doc-b})
+      (reset! down? true)
+      (is (:error (show! "q")))
+      (reset! down? false)
+      (reset! log [])
+      (show! "q")
+      (is (= ["respawn-window"] (verbs log))))))
+
 (deftest the-other-primitives-map-to-tmux-commands
   (let [[run! log] (recording-port #{})
         target (tmux/target {:run! run! :dir (temp-dir) :session "hive" :editor "nvim"})
