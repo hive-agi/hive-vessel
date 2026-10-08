@@ -1,0 +1,9 @@
+{:legacy-close {},
+ :legacy-show
+ {"q" {"op" "ui/show-panel", "panel/id" "q"},
+  "p" {"op" "ui/show-panel", "panel/id" "p"}},
+ :neutral-close {},
+ :neutral-show
+ {"q" {"op" "ui/show-panel", "panel/id" "q"},
+  "p" {"op" "show", "id" "p"}},
+ :other {"q" {"op" "ui/show-panel", "panel/id" "q"}}}
