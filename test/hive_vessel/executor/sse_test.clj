@@ -8,7 +8,8 @@
             [hive-vessel.executor.sse :as sse]
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
-            [clojure.test.check.properties :as prop])
+            [clojure.test.check.properties :as prop]
+            [hive-test.trifecta :refer [deftrifecta]])
   (:import (java.io BufferedReader InputStreamReader)
            (java.net URI)
            (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
@@ -78,6 +79,29 @@
          (sse/retain {} {"op" "ui/show-panel" "panel/id" "p"})))
   (is (= {} (sse/retain {"p" {}} {"op" "ui/close-panel" "panel/id" "p"})))
   (is (= {"p" {}} (sse/retain {"p" {}} {"op" "ui/notify"}))))
+
+(defn retain-sample
+  "Retention after one MESSAGE, starting from panel \"q\" already retained."
+  [message]
+  (sse/retain {"q" {"op" "ui/show-panel" "panel/id" "q"}} message))
+
+(deftrifecta retention-reads-both-vocabularies
+  hive-vessel.executor.sse-test/retain-sample
+  {:golden-path "test/golden/executor/sse-retain.edn"
+   :cases {:legacy-show {"op" "ui/show-panel" "panel/id" "p"}
+           :neutral-show {"op" "show" "id" "p"}
+           :legacy-close {"op" "ui/close-panel" "panel/id" "q"}
+           :neutral-close {"op" "close" "id" "q"}
+           :other {"op" "notify" "id" "q"}}
+   :gen (gen/hash-map "op" (gen/elements ["ui/show-panel" "show" "ui/close-panel" "close" "notify"])
+                      "id" (gen/elements ["p" "q"]))
+   :property-type :totality
+   :mutations [["legacy-only" (fn [message]
+                                (let [r {"q" {"op" "ui/show-panel" "panel/id" "q"}}]
+                                  (case (get message "op")
+                                    "ui/show-panel" (assoc r (get message "panel/id") message)
+                                    "ui/close-panel" (dissoc r (get message "panel/id"))
+                                    r)))]]})
 
 (deftest loopback-origins-only-by-default
   (is (sse/loopback-origin? "http://127.0.0.1:3080"))
