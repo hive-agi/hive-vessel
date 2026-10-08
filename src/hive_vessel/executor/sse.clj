@@ -26,7 +26,8 @@
    decision."
   (:require [clojure.string :as str]
             [hive-vessel.executor.handshake :as handshake]
-            [hive-vessel.wire :as wire])
+            [hive-vessel.wire :as wire]
+            [hive-vessel.dialect.json :as json])
   (:import (com.sun.net.httpserver HttpExchange HttpHandler HttpServer)
            (java.net InetAddress InetSocketAddress URLDecoder)
            (java.io IOException InputStream OutputStream)
@@ -56,13 +57,30 @@
        "event: vessel\n"
        "data: " (wire/write-json message) "\n\n"))
 
+(def ^:private show-ops
+  "Show-panel op names on the wire: the legacy ui/* name and the neutral
+   name a v2 (features) client receives since Lens C5."
+  #{"ui/show-panel" (json/neutral-op-names :ui/show-panel)})
+
+(def ^:private close-ops
+  "Close-panel op names on the wire, legacy and neutral."
+  #{"ui/close-panel" (json/neutral-op-names :ui/close-panel)})
+
+(defn- panel-id
+  "The panel id of MESSAGE under either vocabulary: \"panel/id\" (legacy) or
+   its neutral rename."
+  [message]
+  (or (get message "panel/id") (get message (json/neutral-field-names "panel/id"))))
+
 (defn retain
-  "RETAINED (panel id -> message) after MESSAGE passes."
+  "RETAINED (panel id -> message) after MESSAGE passes. Reads both wire
+   vocabularies, since a v2 client's messages carry the neutral names."
   [retained message]
-  (case (get message "op")
-    "ui/show-panel" (assoc retained (get message "panel/id") message)
-    "ui/close-panel" (dissoc retained (get message "panel/id"))
-    retained))
+  (let [op (get message "op")]
+    (cond
+      (show-ops op) (assoc retained (panel-id message) message)
+      (close-ops op) (dissoc retained (panel-id message))
+      :else retained)))
 
 (defn query-params [^String query]
   (if (str/blank? query)
