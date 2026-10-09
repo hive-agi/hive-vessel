@@ -9,7 +9,8 @@
             [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]
-            [hive-test.trifecta :refer [deftrifecta]])
+            [hive-test.trifecta :refer [deftrifecta]]
+            [hive-vessel.dialect.json :as json])
   (:import (java.io BufferedReader InputStreamReader)
            (java.net URI)
            (java.net.http HttpClient HttpRequest HttpRequest$BodyPublishers HttpResponse$BodyHandlers)
@@ -134,6 +135,63 @@
     (is (= [:status 200] (take! q)))
     (is (= [:data "{\"op\":\"ui/show-panel\",\"panel/id\":\"b\",\"lines\":[]}"] (take! q)))
     (is (nil? (.poll ^LinkedBlockingQueue q 300 TimeUnit/MILLISECONDS)))))
+
+(defn v2-client-sample
+  "MESSAGE as a client subscribed with features=spans receives it."
+  [message]
+  (sse/client-message message {:features #{:spans}}))
+
+(deftrifecta client-message-neutralizes-for-v2-clients
+  hive-vessel.executor.sse-test/v2-client-sample
+  {:golden-path "test/golden/executor/sse-client-message.edn"
+   :cases {:legacy-show {"op" "ui/show-panel" "panel/id" "p" "lines" []
+                         "doc" {"doc/title" "T"}}
+           :neutral-show {"op" "show" "id" "p" "lines" []}
+           :legacy-close {"op" "ui/close-panel" "panel/id" "p"}
+           :legacy-notify {"op" "ui/notify" "message" "m"}
+           :custom {"op" "loop/followup" "id" "x"}}
+   :gen (gen/hash-map "op" (gen/elements ["ui/show-panel" "show" "ui/close-panel"
+                                          "close" "ui/notify" "loop/followup"])
+                      "panel/id" (gen/elements ["p" "q"]))
+   :property-type :totality
+   :mutations [["identity" (fn [message] message)]
+               ["ops-only" (fn [message]
+                             (update message "op" #(get {"ui/show-panel" "show"
+                                                         "ui/close-panel" "close"} % %)))]]})
+
+(deftest client-message-is-the-dialect-projection
+  (doseq [message [{"op" "ui/show-panel" "panel/id" "p" "lines" []}
+                   {"op" "ui/close-panel" "panel/id" "p"}
+                   {"op" "show" "id" "p"}]
+          features [#{} #{:spans} #{:spans :keys :cursor :open-file :loop}]]
+    (is (= (json/neutralize message {:vessel/features features})
+           (sse/client-message message {:features features})))
+    (is (= (sse/client-message message {:features features})
+           (sse/client-message (sse/client-message message {:features features})
+                               {:features features}))
+        "idempotent: a replayed neutral payload stays neutral"))
+  (let [legacy {"op" "ui/show-panel" "panel/id" "p"}]
+    (is (identical? legacy (sse/client-message legacy {:features #{}})))
+    (is (identical? legacy (sse/client-message legacy {})))))
+
+(deftest replayed-and-live-panels-are-shaped-alike-per-features
+  (let [panel {"op" "ui/show-panel" "panel/id" "a" "lines" []}
+        live-v2 (subscribe! *bridge* "/vessel/events?features=spans,keys,cursor,open-file,loop" {})
+        live-v1 (subscribe! *bridge*)]
+    (is (= [:status 200] (take! live-v2)))
+    (is (= [:status 200] (take! live-v1)))
+    (await-clients *bridge* 2)
+    (sse/broadcast! *bridge* panel)
+    (let [live-v2-frame (take! live-v2)
+          live-v1-frame (take! live-v1)
+          late-v2 (subscribe! *bridge* "/vessel/events?features=spans,keys,cursor,open-file,loop" {})
+          late-v1 (subscribe! *bridge*)]
+      (is (= [:status 200] (take! late-v2)))
+      (is (= [:status 200] (take! late-v1)))
+      (is (= [:data "{\"op\":\"show\",\"id\":\"a\",\"lines\":[]}"] live-v2-frame))
+      (is (= live-v2-frame (take! late-v2)) "replay = live for a features client")
+      (is (= [:data "{\"op\":\"ui/show-panel\",\"panel/id\":\"a\",\"lines\":[]}"] live-v1-frame))
+      (is (= live-v1-frame (take! late-v1)) "replay = live for a featureless client"))))
 
 (deftest the-executor-carries-dispatched-ops
   (let [q (subscribe! *bridge*)
