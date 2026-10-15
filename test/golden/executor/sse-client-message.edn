@@ -1,0 +1,5 @@
+{:custom {"op" "loop/followup", "id" "x"},
+ :legacy-close {"op" "close", "id" "p"},
+ :legacy-notify {"op" "notify", "message" "m"},
+ :legacy-show {"op" "show", "id" "p", "lines" [], "doc" {"title" "T"}},
+ :neutral-show {"op" "show", "id" "p", "lines" []}}
