@@ -82,6 +82,17 @@
       (close-ops op) (dissoc retained (panel-id message))
       :else retained)))
 
+(defn client-message
+  "MESSAGE (a :json-dialect payload) as CLIENT receives it: rewritten to the
+   neutral vocabulary when the client subscribed with features, byte-for-byte
+   otherwise (dialect.json/neutralize, a pure function of message and
+   target). The one projection both the connect-time replay and the live
+   broadcast go through, so a retained panel reaches a v2 client as op
+   \"show\" with \"id\" exactly as a live one does. Idempotent: a payload
+   already in the neutral vocabulary passes through unchanged."
+  [message client]
+  (json/neutralize message {:vessel/features (:features client)}))
+
 (defn query-params [^String query]
   (if (str/blank? query)
     {}
@@ -178,11 +189,13 @@
     (.sendResponseHeaders ex 200 0)
     ;; Register and replay under the state lock, so a concurrent broadcast
     ;; lands either in the replay or on the live stream, never neither.
+    ;; Replayed frames go through client-message, the same projection the
+    ;; live broadcast applies, so a v2 client never sees a legacy ui/* op.
     (locking state
       (try
         (write! client "retry: 2000\n\n")
         (doseq [message (vals (:retained @state))]
-          (write! client (sse-frame (:seq @state) message)))
+          (write! client (sse-frame (:seq @state) (client-message message client))))
         (swap! state assoc-in [:clients id] client)
         (catch IOException _ (.close ex))))
     (when-let [f (:on-connect bridge)] (f {:client/id id :client/origin origin}))
@@ -271,16 +284,19 @@
 (defn broadcast!
   "Send MESSAGE (JSON-able data, a :json-dialect payload) to every connected
    client and update retention. Returns {:delivered n :seq s}; a client whose
-   stream fails is dropped."
+   stream fails is dropped. Each client receives MESSAGE through
+   `client-message` (one frame per distinct feature set), the same projection
+   the connect-time replay applies; retention keeps MESSAGE as given."
   [{:keys [state]} message]
   (let [message (wire/->json-data message)]
     (locking state
       (let [{:keys [seq clients]} (swap! state (fn [s] (-> s
                                                            (update :seq inc)
                                                            (update :retained retain message))))
-            frame (sse-frame seq message)
+            frame (memoize (fn [features]
+                             (sse-frame seq (client-message message {:features features}))))
             delivered (reduce (fn [n [id client]]
-                                (try (write! client frame) (inc n)
+                                (try (write! client (frame (:features client))) (inc n)
                                      (catch Throwable _ (drop-client! state id) n)))
                               0 clients)]
         {:delivered delivered :seq seq}))))
