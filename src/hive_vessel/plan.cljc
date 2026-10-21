@@ -32,8 +32,8 @@
    an op or a sequence of ops."
   [out]
   (cond
-    (and (map? out) (m/validate s/Op out)) [out]
-    (and (sequential? out) (every? #(and (map? %) (m/validate s/Op %)) out)) (vec out)
+    (and (map? out) (s/valid-op? out)) [out]
+    (and (sequential? out) (every? #(and (map? %) (s/valid-op? %)) out)) (vec out)
     :else nil))
 
 (declare compile-ops*)
@@ -42,7 +42,7 @@
   [registry target op depth stack t]
   (let [id (:translator/id t)
         accepts (:translator/accepts t)]
-    (if (and accepts (not (m/validate accepts op)))
+    (if (and accepts (not ((s/validator accepts) op)))
       (fail :invalid-op op {:translator/id id :explain (m/explain accepts op)})
       (let [out (try {:value ((:translator/translate t) op target)}
                      (catch #?(:clj Throwable :cljs :default) e
@@ -62,7 +62,7 @@
   (let [op-type (:op op)
         primitive (get s/primitive-schemas op-type)]
     (cond
-      (not (and (map? op) (m/validate s/Op op)))
+      (not (and (map? op) (s/valid-op? op)))
       (fail :invalid-op op)
 
       (> depth max-depth)
@@ -70,12 +70,12 @@
 
       (= :vessel/native op-type)
       (cond
-        (not (m/validate s/Native op)) (fail :invalid-op op (m/explain s/Native op))
+        (not (s/valid-native? op)) (fail :invalid-op op (m/explain s/Native op))
         (= (:native/dialect op) (:vessel/dialect target)) (ok [op] [])
         :else (fail :dialect-mismatch op {:expected (:vessel/dialect target)
                                           :actual (:native/dialect op)}))
 
-      (and primitive (not (m/validate primitive op)))
+      (and primitive (not ((s/validator primitive) op)))
       (fail :invalid-op op (m/explain primitive op))
 
       :else
@@ -114,7 +114,7 @@
    {:error failure}."
   [registry target op-or-ops]
   (cond
-    (not (m/validate s/Target target))
+    (not (s/valid-target? target))
     (fail :invalid-op nil {:target (m/explain s/Target target)})
 
     (map? op-or-ops)
