@@ -229,10 +229,38 @@
    [:map [:ok Plan]]
    [:map [:error Failure]]])
 
+(def ^:private validators
+  "Compiled malli validators keyed by schema value. `m/validate` over a schema
+   FORM parses and compiles it on every call, about 30x the cost of running a
+   compiled validator; plan compilation validates every op it sees, so each
+   schema is compiled once and reused."
+  (atom {}))
+
+(defn validator
+  "The compiled validator of SCHEMA (a form or a malli schema), compiled once
+   and cached."
+  [schema]
+  (or (get @validators schema)
+      (let [compiled (m/validator schema)]
+        (swap! validators assoc schema compiled)
+        compiled)))
+
+(def valid-op?
+  "True iff the value is an Op."
+  (m/validator Op))
+
+(def valid-native?
+  "True iff the value is a :vessel/native op."
+  (m/validator Native))
+
+(def valid-target?
+  "True iff the value is a Target."
+  (m/validator Target))
+
 (defn valid?
   "True iff VALUE conforms to SCHEMA."
   [schema value]
-  (m/validate schema value))
+  ((validator schema) value))
 
 (defn explain
   [schema value]
